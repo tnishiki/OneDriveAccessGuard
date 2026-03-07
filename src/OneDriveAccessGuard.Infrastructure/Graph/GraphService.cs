@@ -1,0 +1,273 @@
+using Microsoft.Graph;
+using Microsoft.Graph.Models;
+using Microsoft.Kiota.Abstractions.Authentication;
+using Microsoft.Extensions.Logging;
+using OneDriveAccessGuard.Core.Interfaces;
+using OneDriveAccessGuard.Core.Models;
+using OneDriveAccessGuard.Core.Enums;
+using CoreModels = OneDriveAccessGuard.Core.Models;
+
+namespace OneDriveAccessGuard.Infrastructure.Graph;
+
+/// <summary>
+/// Microsoft Graph SDK を使用した OneDrive 共有情報取得サービス
+/// </summary>
+public class GraphService : IGraphService
+{
+    private readonly GraphServiceClient _graphClient;
+    private readonly ILogger<GraphService> _logger;
+
+    public GraphService(IAuthService authService, ILogger<GraphService> logger)
+    {
+        _logger = logger;
+        var provider = new TokenAuthProvider(authService);
+        _graphClient = new GraphServiceClient(provider);
+    }
+
+    /// <inheritdoc/>
+    public async Task<IEnumerable<OrgUser>> GetAllUsersAsync(CancellationToken ct = default)
+    {
+        var users = new List<OrgUser>();
+
+        try
+        {
+            var response = await _graphClient.Users.GetAsync(config =>
+            {
+                config.QueryParameters.Select = ["id", "displayName", "mail", "department", "jobTitle", "accountEnabled"];
+                config.QueryParameters.Top = 999;
+                config.QueryParameters.Filter = "accountEnabled eq true";
+            }, ct);
+
+            var pageIterator = PageIterator<User, UserCollectionResponse>.CreatePageIterator(
+                _graphClient,
+                response!,
+                user =>
+                {
+                    users.Add(new OrgUser
+                    {
+                        Id = user.Id ?? string.Empty,
+                        DisplayName = user.DisplayName ?? string.Empty,
+                        Email = user.Mail ?? string.Empty,
+                        Department = user.Department,
+                        JobTitle = user.JobTitle,
+                        IsEnabled = user.AccountEnabled ?? false
+                    });
+                    return true;
+                });
+
+            await pageIterator.IterateAsync(ct);
+            _logger.LogInformation("{Count} 人のユーザーを取得しました", users.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "ユーザー一覧の取得に失敗しました");
+            throw;
+        }
+
+        return users;
+    }
+
+    /// <inheritdoc/>
+    public async Task<IEnumerable<SharedItem>> GetSharedItemsAsync(
+        string userId,
+        IProgress<ScanProgress>? progress = null,
+        CancellationToken ct = default)
+    {
+        var sharedItems = new List<SharedItem>();
+
+        try
+        {
+            // ユーザーのOneDriveルートから共有アイテムを再帰的に取得
+            await ScanDriveFolderAsync(userId, "root", sharedItems, progress, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ユーザー {UserId} のスキャン中にエラーが発生しました", userId);
+        }
+
+        return sharedItems;
+    }
+
+    private async Task ScanDriveFolderAsync(
+        string userId,
+        string folderId,
+        List<SharedItem> results,
+        IProgress<ScanProgress>? progress,
+        CancellationToken ct)
+    {
+        DriveItemCollectionResponse? response;
+
+        try
+        {
+            response = folderId == "root"
+                ? await _graphClient.Users[userId].Drive.Root.Children.GetAsync(config =>
+                {
+                    config.QueryParameters.Select = ["id", "name", "webUrl", "size", "lastModifiedDateTime", "folder", "shared"];
+                    config.QueryParameters.Top = 200;
+                }, ct)
+                : await _graphClient.Users[userId].Drive.Items[folderId].Children.GetAsync(config =>
+                {
+                    config.QueryParameters.Select = ["id", "name", "webUrl", "size", "lastModifiedDateTime", "folder", "shared"];
+                    config.QueryParameters.Top = 200;
+                }, ct);
+        }
+        catch (ServiceException ex) when (ex.ResponseStatusCode == 404)
+        {
+            return; // ドライブが存在しない場合はスキップ
+        }
+
+        if (response?.Value == null) return;
+
+        foreach (var item in response.Value)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // 共有設定が存在するアイテムのみ処理
+            if (item.Shared != null)
+            {
+                var permissions = await GetPermissionsAsync(userId, item.Id!, ct);
+                if (permissions.Any(p => p.SharingType != SharingType.SpecificPeople))
+                {
+                    var sharedItem = new SharedItem
+                    {
+                        Id = item.Id ?? string.Empty,
+                        Name = item.Name ?? string.Empty,
+                        WebUrl = item.WebUrl ?? string.Empty,
+                        OwnerId = userId,
+                        SizeBytes = item.Size ?? 0,
+                        LastModified = item.LastModifiedDateTime?.UtcDateTime ?? DateTime.UtcNow,
+                        DetectedAt = DateTime.UtcNow,
+                        IsFolder = item.Folder != null,
+                        Permissions = permissions,
+                        RiskLevel = CalculateRiskLevel(permissions)
+                    };
+                    results.Add(sharedItem);
+                }
+            }
+
+            // フォルダの場合は再帰的にスキャン
+            if (item.Folder != null && item.Id != null)
+            {
+                await ScanDriveFolderAsync(userId, item.Id, results, progress, ct);
+            }
+        }
+    }
+
+    private async Task<List<SharePermission>> GetPermissionsAsync(
+        string userId, string itemId, CancellationToken ct)
+    {
+        var result = new List<SharePermission>();
+
+        try
+        {
+            var perms = await _graphClient.Users[userId].Drive.Items[itemId].Permissions
+                .GetAsync(cancellationToken: ct);
+
+            foreach (var perm in perms?.Value ?? [])
+            {
+                var sharingType = DetermineSharingType(perm);
+                result.Add(new SharePermission
+                {
+                    Id = perm.Id ?? string.Empty,
+                    SharingType = sharingType,
+                    ShareLink = perm.Link?.WebUrl,
+                    ExpirationDateTime = perm.ExpirationDateTime?.UtcDateTime,
+                    GrantedToEmail = perm.GrantedToV2?.User?.AdditionalData
+                        .TryGetValue("email", out var email) == true ? email?.ToString() : null,
+                    GrantedToDisplayName = perm.GrantedToV2?.User?.DisplayName,
+                    Roles = string.Join(", ", perm.Roles ?? []),
+                    HasPassword = perm.HasPassword ?? false
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "アイテム {ItemId} の権限取得に失敗しました", itemId);
+        }
+
+        return result;
+    }
+
+    private static SharingType DetermineSharingType(Permission perm)
+    {
+        if (perm.Link == null) return SharingType.SpecificPeople;
+
+        return perm.Link.Scope switch
+        {
+            "anonymous" => SharingType.AnonymousLink,
+            "organization" => SharingType.OrganizationLink,
+            _ => SharingType.SpecificPeople
+        };
+    }
+
+    private static RiskLevel CalculateRiskLevel(List<SharePermission> permissions)
+    {
+        if (permissions.Any(p => p.SharingType == SharingType.AnonymousLink))
+            return RiskLevel.High;
+        if (permissions.Any(p => p.SharingType == SharingType.ExternalUser))
+            return RiskLevel.Medium;
+        if (permissions.Any(p => p.SharingType == SharingType.OrganizationLink))
+            return RiskLevel.Low;
+        return RiskLevel.Safe;
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> RemovePermissionAsync(
+        string userId, string itemId, string permissionId, CancellationToken ct = default)
+    {
+        try
+        {
+            await _graphClient.Users[userId].Drive.Items[itemId].Permissions[permissionId]
+                .DeleteAsync(cancellationToken: ct);
+            _logger.LogInformation("共有を削除しました: User={UserId}, Item={ItemId}, Perm={PermId}",
+                userId, itemId, permissionId);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "共有削除に失敗しました: User={UserId}, Item={ItemId}", userId, itemId);
+            return false;
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<int> RemovePermissionsBatchAsync(
+        IEnumerable<(string UserId, string ItemId, string PermissionId)> targets,
+        CancellationToken ct = default)
+    {
+        int successCount = 0;
+        foreach (var target in targets)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            // API Throttling 対策：リクエスト間に短いウェイトを挟む
+            await Task.Delay(100, ct);
+
+            if (await RemovePermissionAsync(target.UserId, target.ItemId, target.PermissionId, ct))
+                successCount++;
+        }
+        return successCount;
+    }
+}
+
+/// <summary>
+/// MSAL トークンを Graph SDK に渡す認証プロバイダー
+/// </summary>
+internal class TokenAuthProvider : IAuthenticationProvider
+{
+    private readonly IAuthService _authService;
+
+    public TokenAuthProvider(IAuthService authService)
+    {
+        _authService = authService;
+    }
+
+    public async Task AuthenticateRequestAsync(
+        RequestInformation request,
+        Dictionary<string, object>? additionalAuthenticationContext = null,
+        CancellationToken ct = default)
+    {
+        var token = await _authService.GetAccessTokenAsync(ct);
+        request.Headers.Add("Authorization", $"Bearer {token}");
+    }
+}

@@ -1,0 +1,93 @@
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.EntityFrameworkCore;
+using Serilog;
+using OneDriveAccessGuard.Core.Interfaces;
+using OneDriveAccessGuard.Infrastructure.Auth;
+using OneDriveAccessGuard.Infrastructure.Graph;
+using OneDriveAccessGuard.Infrastructure.Data;
+using OneDriveAccessGuard.UI.ViewModels;
+using OneDriveAccessGuard.UI.Views;
+using System.Windows;
+
+namespace OneDriveAccessGuard.UI;
+
+public partial class App : Application
+{
+    private IHost? _host;
+
+    protected override async void OnStartup(StartupEventArgs e)
+    {
+        base.OnStartup(e);
+
+        // Serilog 設定
+        Log.Logger = new LoggerConfiguration()
+            .WriteTo.File(
+                path: Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                    "OneDriveAccessGuard", "logs", "app-.log"),
+                rollingInterval: RollingInterval.Day,
+                retainedFileCountLimit: 30)
+            .CreateLogger();
+
+        _host = Host.CreateDefaultBuilder()
+            .UseSerilog()
+            .ConfigureServices(ConfigureServices)
+            .Build();
+
+        await _host.StartAsync();
+
+        // DBマイグレーション
+        using var scope = _host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AccessGuardDbContext>();
+        await db.Database.EnsureCreatedAsync();
+
+        // メインウィンドウ表示
+        var mainWindow = _host.Services.GetRequiredService<MainWindow>();
+        mainWindow.Show();
+    }
+
+    private static void ConfigureServices(HostBuilderContext context, IServiceCollection services)
+    {
+        var config = context.Configuration;
+
+        // 認証サービス
+        services.AddSingleton<IAuthService>(sp =>
+            new MsalAuthService(
+                clientId: config["AzureAd:ClientId"] ?? throw new InvalidOperationException("ClientId が未設定"),
+                tenantId: config["AzureAd:TenantId"] ?? throw new InvalidOperationException("TenantId が未設定"),
+                logger: sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<MsalAuthService>>()));
+
+        // Graph サービス
+        services.AddSingleton<IGraphService, GraphService>();
+
+        // SQLite DB
+        var dbPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "OneDriveAccessGuard", "data.db");
+        services.AddDbContext<AccessGuardDbContext>(opt =>
+            opt.UseSqlite($"Data Source={dbPath}"));
+
+        // ViewModels
+        services.AddTransient<MainViewModel>();
+        services.AddTransient<DashboardViewModel>();
+        services.AddTransient<ScanViewModel>();
+        services.AddTransient<SharedItemsViewModel>();
+        services.AddTransient<LoginViewModel>();
+
+        // Views
+        services.AddTransient<MainWindow>();
+        services.AddTransient<LoginWindow>();
+    }
+
+    protected override async void OnExit(ExitEventArgs e)
+    {
+        if (_host != null)
+        {
+            await _host.StopAsync();
+            _host.Dispose();
+        }
+        Log.CloseAndFlush();
+        base.OnExit(e);
+    }
+}

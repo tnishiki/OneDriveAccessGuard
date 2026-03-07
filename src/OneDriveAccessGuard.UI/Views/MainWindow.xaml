@@ -1,0 +1,148 @@
+<Window x:Class="OneDriveAccessGuard.UI.Views.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+        xmlns:vm="clr-namespace:OneDriveAccessGuard.UI.ViewModels"
+        Title="OneDrive AccessGuard"
+        Height="720" Width="1280"
+        MinHeight="600" MinWidth="960"
+        WindowStartupLocation="CenterScreen"
+        TextElement.Foreground="{DynamicResource MaterialDesignBody}"
+        Background="{DynamicResource MaterialDesignPaper}"
+        TextElement.FontFamily="{materialDesign:MaterialDesignFont}">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ===== 左サイドバー ===== -->
+        <Border Grid.Column="0"
+                Background="{DynamicResource MaterialDesignDarkBackground}">
+            <DockPanel>
+                <!-- アプリタイトル -->
+                <Border DockPanel.Dock="Top"
+                        Padding="16,20"
+                        Background="#1A237E">
+                    <StackPanel>
+                        <TextBlock Text="OneDrive"
+                                   Foreground="White" FontSize="13" Opacity="0.8"/>
+                        <TextBlock Text="AccessGuard"
+                                   Foreground="White" FontSize="18" FontWeight="Bold"/>
+                        <TextBlock Text="v1.0.0"
+                                   Foreground="White" FontSize="10" Opacity="0.5" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- サインインユーザー情報 -->
+                <Border DockPanel.Dock="Top"
+                        Padding="16,12"
+                        Background="#283593">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Account"
+                                                 Foreground="White" Width="20" Height="20"
+                                                 VerticalAlignment="Center"/>
+                        <StackPanel Margin="8,0,0,0">
+                            <TextBlock Text="{Binding SignedInUserName}"
+                                       Foreground="White" FontSize="11" FontWeight="Medium"/>
+                            <TextBlock Text="{Binding SignedInUserEmail}"
+                                       Foreground="White" FontSize="10" Opacity="0.7"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- ナビゲーションメニュー -->
+                <ListBox DockPanel.Dock="Top"
+                         ItemsSource="{Binding NavigationItems}"
+                         SelectedItem="{Binding SelectedNavItem}"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         Margin="0,8,0,0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Margin="16,10">
+                                <materialDesign:PackIcon Kind="{Binding Icon}"
+                                                         Foreground="White" Width="20" Height="20"
+                                                         VerticalAlignment="Center"/>
+                                <TextBlock Text="{Binding Label}"
+                                           Foreground="White" FontSize="13"
+                                           Margin="12,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="Cursor" Value="Hand"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter Property="Background" Value="#3F51B5"/>
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#3949AB"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                </ListBox>
+
+                <!-- サインアウトボタン（下部） -->
+                <Button DockPanel.Dock="Bottom"
+                        Command="{Binding SignOutCommand}"
+                        Margin="16" Padding="12,8"
+                        Background="Transparent"
+                        BorderThickness="1" BorderBrush="#FFFFFF40"
+                        Foreground="White">
+                    <StackPanel Orientation="Horizontal">
+                        <materialDesign:PackIcon Kind="Logout" Width="16" Height="16"/>
+                        <TextBlock Text="サインアウト" Margin="8,0,0,0" FontSize="12"/>
+                    </StackPanel>
+                </Button>
+            </DockPanel>
+        </Border>
+
+        <!-- ===== メインコンテンツ ===== -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="56"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <!-- トップバー -->
+            <Border Grid.Row="0"
+                    Background="White"
+                    BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
+                <DockPanel Margin="24,0">
+                    <TextBlock DockPanel.Dock="Left"
+                               Text="{Binding CurrentPageTitle}"
+                               FontSize="18" FontWeight="Medium"
+                               VerticalAlignment="Center"/>
+
+                    <!-- スキャン実行ボタン -->
+                    <Button DockPanel.Dock="Right"
+                            Command="{Binding StartScanCommand}"
+                            Style="{StaticResource MaterialDesignRaisedButton}"
+                            Background="#1565C0" Foreground="White"
+                            Padding="16,8" Margin="8,0,0,0">
+                        <StackPanel Orientation="Horizontal">
+                            <materialDesign:PackIcon Kind="Magnify" Width="16" Height="16"/>
+                            <TextBlock Text="スキャン実行" Margin="6,0,0,0"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 最終スキャン日時 -->
+                    <TextBlock DockPanel.Dock="Right"
+                               Text="{Binding LastScanTimeText}"
+                               FontSize="12" Foreground="#757575"
+                               VerticalAlignment="Center"/>
+                </DockPanel>
+            </Border>
+
+            <!-- コンテンツ領域（ページ切替） -->
+            <ContentControl Grid.Row="1"
+                            Content="{Binding CurrentPage}"
+                            Margin="0"/>
+        </Grid>
+    </Grid>
+</Window>
