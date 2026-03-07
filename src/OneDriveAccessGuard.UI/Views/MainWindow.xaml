@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         xmlns:vm="clr-namespace:OneDriveAccessGuard.UI.ViewModels"
+        xmlns:views="clr-namespace:OneDriveAccessGuard.UI.Views"
         Title="OneDrive AccessGuard"
         Height="720" Width="1280"
         MinHeight="600" MinWidth="960"
@@ -10,6 +11,18 @@
         TextElement.Foreground="{DynamicResource MaterialDesignBody}"
         Background="{DynamicResource MaterialDesignPaper}"
         TextElement.FontFamily="{materialDesign:MaterialDesignFont}">
+
+    <Window.Resources>
+        <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
+            <views:DashboardView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ScanViewModel}">
+            <views:ScanView/>
+        </DataTemplate>
+        <DataTemplate DataType="{x:Type vm:SharedItemsViewModel}">
+            <views:SharedItemsView/>
+        </DataTemplate>
+    </Window.Resources>
 
     <Grid>
         <Grid.ColumnDefinitions>
@@ -19,7 +32,7 @@
 
         <!-- ===== 左サイドバー ===== -->
         <Border Grid.Column="0"
-                Background="{DynamicResource MaterialDesignDarkBackground}">
+                Background="#1E2F6B">
             <DockPanel>
                 <!-- アプリタイトル -->
                 <Border DockPanel.Dock="Top"
@@ -63,11 +76,14 @@
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal" Margin="16,10">
                                 <materialDesign:PackIcon Kind="{Binding Icon}"
-                                                         Foreground="White" Width="20" Height="20"
-                                                         VerticalAlignment="Center"/>
+                                                         Foreground="#FFFFFF" Width="20" Height="20"
+                                                         VerticalAlignment="Center"
+                                                         Opacity="1"/>
                                 <TextBlock Text="{Binding Label}"
-                                           Foreground="White" FontSize="13"
-                                           Margin="12,0,0,0" VerticalAlignment="Center"/>
+                                           Foreground="#FFFFFF" FontSize="13"
+                                           FontWeight="Regular"
+                                           Margin="12,0,0,0" VerticalAlignment="Center"
+                                           Opacity="1"/>
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
@@ -75,15 +91,29 @@
                         <Style TargetType="ListBoxItem">
                             <Setter Property="Padding" Value="0"/>
                             <Setter Property="Cursor" Value="Hand"/>
-                            <Style.Triggers>
-                                <Trigger Property="IsSelected" Value="True">
-                                    <Setter Property="Background" Value="#3F51B5"/>
-                                </Trigger>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#3949AB"/>
-                                </Trigger>
-                            </Style.Triggers>
+                            <Setter Property="Background" Value="Transparent"/>
+                            <Setter Property="Foreground" Value="White"/>
+                            <Setter Property="BorderThickness" Value="0"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border Background="{TemplateBinding Background}"
+                            BorderThickness="0">
+                                            <ContentPresenter/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter Property="Background" Value="#3F51B5"/>
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#3949AB"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
                         </Style>
+
                     </ListBox.ItemContainerStyle>
                 </ListBox>
 
