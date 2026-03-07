@@ -51,3 +51,4 @@ TestResults/
 coverage/
 *.coverage
 *.coveragexml
+src/OneDriveAccessGuard.UI/appsettings.json

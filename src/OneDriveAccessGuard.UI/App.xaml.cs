@@ -32,6 +32,7 @@ public partial class App : Application
             .CreateLogger();
 
         _host = Host.CreateDefaultBuilder()
+            .UseContentRoot(AppContext.BaseDirectory)
             .UseSerilog()
             .ConfigureServices(ConfigureServices)
             .Build();
@@ -66,9 +67,17 @@ public partial class App : Application
         var dbPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "OneDriveAccessGuard", "data.db");
+        /*
+        services.AddDbContext<AccessGuardDbContext>(opt =>
+            opt.UseSqlite($"Data Source={dbPath}"));
+        */
+        Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!); // DBフォルダを事前作成
         services.AddDbContext<AccessGuardDbContext>(opt =>
             opt.UseSqlite($"Data Source={dbPath}"));
 
+        // ★ リポジトリの登録（追加）
+        services.AddScoped<ISharedItemRepository, SharedItemRepository>();
+        services.AddScoped<IAuditLogRepository, AuditLogRepository>();
         // ViewModels
         services.AddTransient<MainViewModel>();
         services.AddTransient<DashboardViewModel>();
