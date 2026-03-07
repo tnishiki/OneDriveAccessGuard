@@ -1,5 +1,6 @@
 using Microsoft.Graph;
-using Microsoft.Graph.Models;
+using GraphModels = Microsoft.Graph.Models;
+using Microsoft.Kiota.Abstractions;
 using Microsoft.Kiota.Abstractions.Authentication;
 using Microsoft.Extensions.Logging;
 using OneDriveAccessGuard.Core.Interfaces;
@@ -38,7 +39,7 @@ public class GraphService : IGraphService
                 config.QueryParameters.Filter = "accountEnabled eq true";
             }, ct);
 
-            var pageIterator = PageIterator<User, UserCollectionResponse>.CreatePageIterator(
+            var pageIterator = PageIterator<GraphModels.User, GraphModels.UserCollectionResponse>.CreatePageIterator(
                 _graphClient,
                 response!,
                 user =>
@@ -67,6 +68,30 @@ public class GraphService : IGraphService
         return users;
     }
 
+    private readonly Dictionary<string, string> _driveIdCache = new();
+
+    private async Task<string?> GetDriveIdAsync(string userId, CancellationToken ct)
+    {
+        if (_driveIdCache.TryGetValue(userId, out var cached))
+            return cached;
+
+        try
+        {
+            var drive = await _graphClient.Users[userId].Drive.GetAsync(cancellationToken: ct);
+            if (drive?.Id != null)
+            {
+                _driveIdCache[userId] = drive.Id;
+                return drive.Id;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ユーザー {UserId} のドライブ取得に失敗しました", userId);
+        }
+
+        return null;
+    }
+
     /// <inheritdoc/>
     public async Task<IEnumerable<SharedItem>> GetSharedItemsAsync(
         string userId,
@@ -77,8 +102,11 @@ public class GraphService : IGraphService
 
         try
         {
+            var driveId = await GetDriveIdAsync(userId, ct);
+            if (driveId == null) return sharedItems;
+
             // ユーザーのOneDriveルートから共有アイテムを再帰的に取得
-            await ScanDriveFolderAsync(userId, "root", sharedItems, progress, ct);
+            await ScanDriveFolderAsync(userId, driveId, "root", sharedItems, progress, ct);
         }
         catch (Exception ex)
         {
@@ -90,22 +118,23 @@ public class GraphService : IGraphService
 
     private async Task ScanDriveFolderAsync(
         string userId,
+        string driveId,
         string folderId,
         List<SharedItem> results,
         IProgress<ScanProgress>? progress,
         CancellationToken ct)
     {
-        DriveItemCollectionResponse? response;
+        GraphModels.DriveItemCollectionResponse? response;
 
         try
         {
             response = folderId == "root"
-                ? await _graphClient.Users[userId].Drive.Root.Children.GetAsync(config =>
+                ? await _graphClient.Drives[driveId].Items["root"].Children.GetAsync(config =>
                 {
                     config.QueryParameters.Select = ["id", "name", "webUrl", "size", "lastModifiedDateTime", "folder", "shared"];
                     config.QueryParameters.Top = 200;
                 }, ct)
-                : await _graphClient.Users[userId].Drive.Items[folderId].Children.GetAsync(config =>
+                : await _graphClient.Drives[driveId].Items[folderId].Children.GetAsync(config =>
                 {
                     config.QueryParameters.Select = ["id", "name", "webUrl", "size", "lastModifiedDateTime", "folder", "shared"];
                     config.QueryParameters.Top = 200;
@@ -125,7 +154,7 @@ public class GraphService : IGraphService
             // 共有設定が存在するアイテムのみ処理
             if (item.Shared != null)
             {
-                var permissions = await GetPermissionsAsync(userId, item.Id!, ct);
+                var permissions = await GetPermissionsAsync(driveId, item.Id!, ct);
                 if (permissions.Any(p => p.SharingType != SharingType.SpecificPeople))
                 {
                     var sharedItem = new SharedItem
@@ -148,19 +177,19 @@ public class GraphService : IGraphService
             // フォルダの場合は再帰的にスキャン
             if (item.Folder != null && item.Id != null)
             {
-                await ScanDriveFolderAsync(userId, item.Id, results, progress, ct);
+                await ScanDriveFolderAsync(userId, driveId, item.Id, results, progress, ct);
             }
         }
     }
 
     private async Task<List<SharePermission>> GetPermissionsAsync(
-        string userId, string itemId, CancellationToken ct)
+        string driveId, string itemId, CancellationToken ct)
     {
         var result = new List<SharePermission>();
 
         try
         {
-            var perms = await _graphClient.Users[userId].Drive.Items[itemId].Permissions
+            var perms = await _graphClient.Drives[driveId].Items[itemId].Permissions
                 .GetAsync(cancellationToken: ct);
 
             foreach (var perm in perms?.Value ?? [])
@@ -188,7 +217,7 @@ public class GraphService : IGraphService
         return result;
     }
 
-    private static SharingType DetermineSharingType(Permission perm)
+    private static SharingType DetermineSharingType(Microsoft.Graph.Models.Permission perm)
     {
         if (perm.Link == null) return SharingType.SpecificPeople;
 
@@ -217,7 +246,10 @@ public class GraphService : IGraphService
     {
         try
         {
-            await _graphClient.Users[userId].Drive.Items[itemId].Permissions[permissionId]
+            var driveId = await GetDriveIdAsync(userId, ct);
+            if (driveId == null) return false;
+
+            await _graphClient.Drives[driveId].Items[itemId].Permissions[permissionId]
                 .DeleteAsync(cancellationToken: ct);
             _logger.LogInformation("共有を削除しました: User={UserId}, Item={ItemId}, Perm={PermId}",
                 userId, itemId, permissionId);

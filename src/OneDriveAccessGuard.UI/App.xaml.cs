@@ -8,6 +8,7 @@ using OneDriveAccessGuard.Infrastructure.Graph;
 using OneDriveAccessGuard.Infrastructure.Data;
 using OneDriveAccessGuard.UI.ViewModels;
 using OneDriveAccessGuard.UI.Views;
+using System.IO;
 using System.Windows;
 
 namespace OneDriveAccessGuard.UI;
@@ -77,7 +78,7 @@ public partial class App : Application
 
         // Views
         services.AddTransient<MainWindow>();
-        services.AddTransient<LoginWindow>();
+        //services.AddTransient<LoginWindow>();
     }
 
     protected override async void OnExit(ExitEventArgs e)

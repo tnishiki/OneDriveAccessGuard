@@ -19,6 +19,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\OneDriveAccessGuard.Core\OneDriveAccessGuard.Core.csproj" />
     <ProjectReference Include="..\..\src\OneDriveAccessGuard.Infrastructure\OneDriveAccessGuard.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\OneDriveAccessGuard.UI\OneDriveAccessGuard.UI.csproj" />
   </ItemGroup>
 
 </Project>
