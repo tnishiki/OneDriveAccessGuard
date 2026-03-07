@@ -42,6 +42,7 @@ desktop.ini
 
 ## 機密情報 - 絶対にコミットしない
 appsettings.local.json
+appsettings.json
 **/secrets.json
 *.pfx
 *.p12
@@ -51,4 +52,4 @@ TestResults/
 coverage/
 *.coverage
 *.coveragexml
-src/OneDriveAccessGuard.UI/appsettings.json
+
