@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OneDriveAccessGuard.Core.Interfaces;
@@ -17,6 +18,9 @@ public partial class ScanViewModel : ObservableObject
     [ObservableProperty] private string _progressMessage = "スキャン待機中";
     [ObservableProperty] private int _foundItemsCount;
     [ObservableProperty] private bool _canCancel;
+    [ObservableProperty] private bool _excludeGuests = true;
+
+    public ObservableCollection<SharedItem> ScannedItems { get; } = new();
 
     public ScanViewModel(IGraphService graphService, ISharedItemRepository repository)
     {
@@ -33,6 +37,7 @@ public partial class ScanViewModel : ObservableObject
         ScanStatus = ScanStatus.Running;
         CanCancel = true;
         FoundItemsCount = 0;
+        ScannedItems.Clear();
 
         var progress = new Progress<ScanProgress>(p =>
         {
@@ -43,7 +48,7 @@ public partial class ScanViewModel : ObservableObject
 
         try
         {
-            var users = await _graphService.GetAllUsersAsync(_cts.Token);
+            var users = await _graphService.GetAllUsersAsync(ExcludeGuests, _cts.Token);
             var allItems = new List<SharedItem>();
 
             int processed = 0;
@@ -60,6 +65,7 @@ public partial class ScanViewModel : ObservableObject
                 {
                     item.OwnerDisplayName = user.DisplayName;
                     item.OwnerEmail = user.Email;
+                    ScannedItems.Add(item);
                 }
 
                 allItems.AddRange(items);

@@ -81,17 +81,21 @@ public class GraphService : IGraphService
     // ─── ユーザー一覧 ────────────────────────────────────────────────
 
     /// <inheritdoc/>
-    public async Task<IEnumerable<OrgUser>> GetAllUsersAsync(CancellationToken ct = default)
+    public async Task<IEnumerable<OrgUser>> GetAllUsersAsync(bool excludeGuests = false, CancellationToken ct = default)
     {
         var users = new List<OrgUser>();
 
         try
         {
+            var filter = excludeGuests
+                ? "accountEnabled eq true and userType eq 'Member'"
+                : "accountEnabled eq true";
+
             var response = await Client.Users.GetAsync(config =>
             {
                 config.QueryParameters.Select = ["id", "displayName", "mail", "department", "jobTitle", "accountEnabled"];
                 config.QueryParameters.Top = 999;
-                config.QueryParameters.Filter = "accountEnabled eq true";
+                config.QueryParameters.Filter = filter;
             }, ct);
 
             var pageIterator = PageIterator<GraphModels.User, GraphModels.UserCollectionResponse>.CreatePageIterator(
@@ -189,12 +193,12 @@ public class GraphService : IGraphService
             response = folderId == "root"
                 ? await Client.Drives[driveId].Items["root"].Children.GetAsync(config =>
                 {
-                    config.QueryParameters.Select = ["id", "name", "webUrl", "size", "lastModifiedDateTime", "folder", "shared"];
+                    config.QueryParameters.Select = ["id", "name", "webUrl", "size", "createdDateTime", "lastModifiedDateTime", "folder", "shared"];
                     config.QueryParameters.Top = 200;
                 }, ct)
                 : await Client.Drives[driveId].Items[folderId].Children.GetAsync(config =>
                 {
-                    config.QueryParameters.Select = ["id", "name", "webUrl", "size", "lastModifiedDateTime", "folder", "shared"];
+                    config.QueryParameters.Select = ["id", "name", "webUrl", "size", "createdDateTime", "lastModifiedDateTime", "folder", "shared"];
                     config.QueryParameters.Top = 200;
                 }, ct);
         }
@@ -212,16 +216,17 @@ public class GraphService : IGraphService
             if (item.Shared != null)
             {
                 var permissions = await GetPermissionsAsync(driveId, item.Id!, ct);
-                if (permissions.Any(p => p.SharingType != SharingType.SpecificPeople))
+                if (permissions.Any(p => p.SharingType == SharingType.AnonymousLink))
                 {
                     results.Add(new SharedItem
                     {
                         Id           = item.Id ?? string.Empty,
                         Name         = item.Name ?? string.Empty,
-                        WebUrl       = item.WebUrl ?? string.Empty,
+                        WebUrl       = permissions[0].ShareLink ?? string.Empty,
                         OwnerId      = userId,
-                        SizeBytes    = item.Size ?? 0,
-                        LastModified = item.LastModifiedDateTime?.UtcDateTime ?? DateTime.UtcNow,
+                        SizeBytes        = item.Size ?? 0,
+                        CreatedDateTime  = item.CreatedDateTime?.UtcDateTime,
+                        LastModified     = item.LastModifiedDateTime?.UtcDateTime ?? DateTime.UtcNow,
                         DetectedAt   = DateTime.UtcNow,
                         IsFolder     = item.Folder != null,
                         Permissions  = permissions,

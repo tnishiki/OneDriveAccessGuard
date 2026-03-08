@@ -14,6 +14,7 @@ public class SharedItem
     public string OwnerDisplayName { get; set; } = string.Empty;
     public string OwnerEmail { get; set; } = string.Empty;
     public long SizeBytes { get; set; }
+    public DateTime? CreatedDateTime { get; set; }
     public DateTime LastModified { get; set; }
     public DateTime DetectedAt { get; set; }
     public bool IsFolder { get; set; }
