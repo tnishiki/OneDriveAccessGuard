@@ -8,6 +8,7 @@ public partial class MainViewModel : ObservableObject
     private readonly DashboardViewModel _dashboardVm;
     private readonly ScanViewModel _scanVm;
     private readonly SharedItemsViewModel _sharedItemsVm;
+    private readonly SettingsViewModel _settingsVm;
 
     [ObservableProperty]
     private string _signedInUserName = string.Empty;
@@ -40,11 +41,13 @@ public partial class MainViewModel : ObservableObject
     public MainViewModel(
         DashboardViewModel dashboardVm,
         ScanViewModel scanVm,
-        SharedItemsViewModel sharedItemsVm)
+        SharedItemsViewModel sharedItemsVm,
+        SettingsViewModel settingsVm)
     {
         _dashboardVm = dashboardVm;
         _scanVm = scanVm;
         _sharedItemsVm = sharedItemsVm;
+        _settingsVm = settingsVm;
     }
 
     public Task InitializeAsync()
@@ -66,6 +69,7 @@ public partial class MainViewModel : ObservableObject
             "dashboard" => _dashboardVm,
             "scan"      => _scanVm,
             "files"     => _sharedItemsVm,
+            "settings"  => _settingsVm,
             _           => _dashboardVm
         };
     }

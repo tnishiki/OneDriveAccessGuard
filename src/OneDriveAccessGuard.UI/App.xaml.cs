@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using OneDriveAccessGuard.Core.Interfaces;
 using OneDriveAccessGuard.Infrastructure.Data;
 using OneDriveAccessGuard.Infrastructure.Graph;
+using OneDriveAccessGuard.Infrastructure.Settings;
 using OneDriveAccessGuard.UI.ViewModels;
 using OneDriveAccessGuard.UI.Views;
 using Serilog;
@@ -51,15 +52,11 @@ public partial class App : Application
 
     private static void ConfigureServices(HostBuilderContext context, IServiceCollection services)
     {
-        var config = context.Configuration;
+        // 設定サービス（レジストリ管理）
+        services.AddSingleton<ISettingsService, RegistrySettingsService>();
 
-        // Graph サービス
-        services.AddSingleton<IGraphService>(sp =>
-            new GraphService(
-                clientId: config["AzureAd:ClientId"] ?? throw new InvalidOperationException("ClientId が未設定"),
-                tenantId: config["AzureAd:TenantId"] ?? throw new InvalidOperationException("TenantId が未設定"),
-                thumbprint: config["AzureAd:CertificateThumbprint"] ?? throw new InvalidOperationException("CertificateThumbprint が未設定"),
-                logger: sp.GetRequiredService<ILogger<GraphService>>()));
+        // Graph サービス（設定が揃ったときに初めて接続）
+        services.AddSingleton<IGraphService, GraphService>();
 
         // SQLite DB
         var dbPath = Path.Combine(
@@ -82,6 +79,7 @@ public partial class App : Application
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<ScanViewModel>();
         services.AddTransient<SharedItemsViewModel>();
+        services.AddTransient<SettingsViewModel>();
 
         // Views
         services.AddTransient<MainWindow>();

@@ -4,6 +4,22 @@ using OneDriveAccessGuard.Core.Enums;
 namespace OneDriveAccessGuard.Core.Interfaces;
 
 /// <summary>
+/// アプリケーション設定の永続化インターフェース
+/// </summary>
+public interface ISettingsService
+{
+    string? ClientId { get; set; }
+    string? TenantId { get; set; }
+    string? CertificateThumbprint { get; set; }
+
+    /// <summary>必須項目がすべて設定済みか</summary>
+    bool IsConfigured { get; }
+
+    void Load();
+    void Save();
+}
+
+/// <summary>
 /// Microsoft Graph API との通信インターフェース
 /// </summary>
 public interface IGraphService
@@ -19,6 +35,9 @@ public interface IGraphService
 
     /// <summary>指定ファイルの共有アクセス許可を一括削除する</summary>
     Task<int> RemovePermissionsBatchAsync(IEnumerable<(string UserId, string ItemId, string PermissionId)> targets, CancellationToken ct = default);
+
+    /// <summary>設定変更後にクライアントを再初期化する</summary>
+    void ReinitializeClient();
 }
 
 /// <summary>

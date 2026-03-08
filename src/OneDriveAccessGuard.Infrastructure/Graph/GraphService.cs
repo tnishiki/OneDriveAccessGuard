@@ -1,10 +1,8 @@
 using Microsoft.Graph;
 using GraphModels = Microsoft.Graph.Models;
-using Microsoft.Kiota.Abstractions;
 using Microsoft.Extensions.Logging;
 using Azure.Identity;
 using System.Security.Cryptography.X509Certificates;
-using CoreModels = OneDriveAccessGuard.Core.Models;
 using OneDriveAccessGuard.Core.Interfaces;
 using OneDriveAccessGuard.Core.Models;
 using OneDriveAccessGuard.Core.Enums;
@@ -16,40 +14,72 @@ namespace OneDriveAccessGuard.Infrastructure.Graph;
 /// </summary>
 public class GraphService : IGraphService
 {
-    private readonly GraphServiceClient _graphClient;
+    private readonly ISettingsService _settings;
     private readonly ILogger<GraphService> _logger;
 
-    private static readonly string[] Scopes =
-        [
-            "https://graph.microsoft.com/.default"
-        ];
+    private GraphServiceClient? _graphClient;
+    private readonly Dictionary<string, string> _driveIdCache = new();
 
-    public GraphService(string clientId, string tenantId, string thumbprint, ILogger<GraphService> logger)
+    private static readonly string[] Scopes = ["https://graph.microsoft.com/.default"];
+
+    public GraphService(ISettingsService settings, ILogger<GraphService> logger)
     {
+        _settings = settings;
         _logger = logger;
-        var credential = GetClientCertCredential(tenantId, clientId, thumbprint);
-        _graphClient = new GraphServiceClient(credential, Scopes);
     }
-    private static ClientCertificateCredential GetClientCertCredential(
-           string tenantId, string clientId, string thumbprint)
+
+    /// <summary>
+    /// 設定が揃っているときだけクライアントを返す。未設定なら例外。
+    /// </summary>
+    private GraphServiceClient Client
+    {
+        get
+        {
+            if (_graphClient != null) return _graphClient;
+
+            if (!_settings.IsConfigured)
+                throw new InvalidOperationException(
+                    "Azure AD の設定が未完了です。設定画面から ClientId・TenantId・証明書 Thumbprint を入力してください。");
+
+            var credential = BuildCredential(
+                _settings.TenantId!,
+                _settings.ClientId!,
+                _settings.CertificateThumbprint!);
+
+            _graphClient = new GraphServiceClient(credential, Scopes);
+            return _graphClient;
+        }
+    }
+
+    /// <inheritdoc/>
+    public void ReinitializeClient()
+    {
+        _graphClient = null;
+        _driveIdCache.Clear();
+        _logger.LogInformation("GraphService クライアントをリセットしました");
+    }
+
+    private static ClientCertificateCredential BuildCredential(
+        string tenantId, string clientId, string thumbprint)
     {
         using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
         store.Open(OpenFlags.ReadOnly);
 
-        var certificate = store.Certificates
+        var cert = store.Certificates
             .Cast<X509Certificate2>()
-            .FirstOrDefault(cert =>
-                string.Equals(cert.Thumbprint, thumbprint, StringComparison.OrdinalIgnoreCase))
+            .FirstOrDefault(c => string.Equals(c.Thumbprint, thumbprint, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException(
                 $"証明書が見つかりません。Thumbprint: {thumbprint}");
 
-        var options = new ClientCertificateCredentialOptions
-        {
-            AuthorityHost = AzureAuthorityHosts.AzurePublicCloud
-        };
-
-        return new ClientCertificateCredential(tenantId, clientId, certificate, options);
+        return new ClientCertificateCredential(tenantId, clientId, cert,
+            new ClientCertificateCredentialOptions
+            {
+                AuthorityHost = AzureAuthorityHosts.AzurePublicCloud
+            });
     }
+
+    // ─── ユーザー一覧 ────────────────────────────────────────────────
+
     /// <inheritdoc/>
     public async Task<IEnumerable<OrgUser>> GetAllUsersAsync(CancellationToken ct = default)
     {
@@ -57,7 +87,7 @@ public class GraphService : IGraphService
 
         try
         {
-            var response = await _graphClient.Users.GetAsync(config =>
+            var response = await Client.Users.GetAsync(config =>
             {
                 config.QueryParameters.Select = ["id", "displayName", "mail", "department", "jobTitle", "accountEnabled"];
                 config.QueryParameters.Top = 999;
@@ -65,18 +95,18 @@ public class GraphService : IGraphService
             }, ct);
 
             var pageIterator = PageIterator<GraphModels.User, GraphModels.UserCollectionResponse>.CreatePageIterator(
-                _graphClient,
+                Client,
                 response!,
                 user =>
                 {
                     users.Add(new OrgUser
                     {
-                        Id = user.Id ?? string.Empty,
+                        Id          = user.Id          ?? string.Empty,
                         DisplayName = user.DisplayName ?? string.Empty,
-                        Email = user.Mail ?? string.Empty,
-                        Department = user.Department,
-                        JobTitle = user.JobTitle,
-                        IsEnabled = user.AccountEnabled ?? false
+                        Email       = user.Mail        ?? string.Empty,
+                        Department  = user.Department,
+                        JobTitle    = user.JobTitle,
+                        IsEnabled   = user.AccountEnabled ?? false
                     });
                     return true;
                 });
@@ -93,7 +123,7 @@ public class GraphService : IGraphService
         return users;
     }
 
-    private readonly Dictionary<string, string> _driveIdCache = new();
+    // ─── 共有アイテムスキャン ────────────────────────────────────────
 
     private async Task<string?> GetDriveIdAsync(string userId, CancellationToken ct)
     {
@@ -102,16 +132,16 @@ public class GraphService : IGraphService
 
         try
         {
-            var drive = await _graphClient.Users[userId].Drive.GetAsync(cancellationToken: ct);
+            var drive = await Client.Users[userId].Drive.GetAsync(cancellationToken: ct);
             if (drive?.Id != null)
             {
                 _driveIdCache[userId] = drive.Id;
                 return drive.Id;
             }
         }
-        catch(ServiceException ex)
+        catch (ServiceException ex)
         {
-            _logger.LogWarning(ex, "ユーザー {UserId} のドライブ取得に失敗しました", ex.ResponseHeaders);
+            _logger.LogWarning(ex, "ユーザー {UserId} のドライブ取得に失敗しました", userId);
         }
         catch (Exception ex)
         {
@@ -134,7 +164,6 @@ public class GraphService : IGraphService
             var driveId = await GetDriveIdAsync(userId, ct);
             if (driveId == null) return sharedItems;
 
-            // ユーザーのOneDriveルートから共有アイテムを再帰的に取得
             await ScanDriveFolderAsync(userId, driveId, "root", sharedItems, progress, ct);
         }
         catch (Exception ex)
@@ -158,12 +187,12 @@ public class GraphService : IGraphService
         try
         {
             response = folderId == "root"
-                ? await _graphClient.Drives[driveId].Items["root"].Children.GetAsync(config =>
+                ? await Client.Drives[driveId].Items["root"].Children.GetAsync(config =>
                 {
                     config.QueryParameters.Select = ["id", "name", "webUrl", "size", "lastModifiedDateTime", "folder", "shared"];
                     config.QueryParameters.Top = 200;
                 }, ct)
-                : await _graphClient.Drives[driveId].Items[folderId].Children.GetAsync(config =>
+                : await Client.Drives[driveId].Items[folderId].Children.GetAsync(config =>
                 {
                     config.QueryParameters.Select = ["id", "name", "webUrl", "size", "lastModifiedDateTime", "folder", "shared"];
                     config.QueryParameters.Top = 200;
@@ -171,7 +200,7 @@ public class GraphService : IGraphService
         }
         catch (ServiceException ex) when (ex.ResponseStatusCode == 404)
         {
-            return; // ドライブが存在しない場合はスキップ
+            return;
         }
 
         if (response?.Value == null) return;
@@ -180,34 +209,29 @@ public class GraphService : IGraphService
         {
             ct.ThrowIfCancellationRequested();
 
-            // 共有設定が存在するアイテムのみ処理
             if (item.Shared != null)
             {
                 var permissions = await GetPermissionsAsync(driveId, item.Id!, ct);
                 if (permissions.Any(p => p.SharingType != SharingType.SpecificPeople))
                 {
-                    var sharedItem = new SharedItem
+                    results.Add(new SharedItem
                     {
-                        Id = item.Id ?? string.Empty,
-                        Name = item.Name ?? string.Empty,
-                        WebUrl = item.WebUrl ?? string.Empty,
-                        OwnerId = userId,
-                        SizeBytes = item.Size ?? 0,
+                        Id           = item.Id ?? string.Empty,
+                        Name         = item.Name ?? string.Empty,
+                        WebUrl       = item.WebUrl ?? string.Empty,
+                        OwnerId      = userId,
+                        SizeBytes    = item.Size ?? 0,
                         LastModified = item.LastModifiedDateTime?.UtcDateTime ?? DateTime.UtcNow,
-                        DetectedAt = DateTime.UtcNow,
-                        IsFolder = item.Folder != null,
-                        Permissions = permissions,
-                        RiskLevel = CalculateRiskLevel(permissions)
-                    };
-                    results.Add(sharedItem);
+                        DetectedAt   = DateTime.UtcNow,
+                        IsFolder     = item.Folder != null,
+                        Permissions  = permissions,
+                        RiskLevel    = CalculateRiskLevel(permissions)
+                    });
                 }
             }
 
-            // フォルダの場合は再帰的にスキャン
             if (item.Folder != null && item.Id != null)
-            {
                 await ScanDriveFolderAsync(userId, driveId, item.Id, results, progress, ct);
-            }
         }
     }
 
@@ -218,23 +242,23 @@ public class GraphService : IGraphService
 
         try
         {
-            var perms = await _graphClient.Drives[driveId].Items[itemId].Permissions
+            var perms = await Client.Drives[driveId].Items[itemId].Permissions
                 .GetAsync(cancellationToken: ct);
 
             foreach (var perm in perms?.Value ?? [])
             {
-                var sharingType = DetermineSharingType(perm);
                 result.Add(new SharePermission
                 {
-                    Id = perm.Id ?? string.Empty,
-                    SharingType = sharingType,
-                    ShareLink = perm.Link?.WebUrl,
-                    ExpirationDateTime = perm.ExpirationDateTime?.UtcDateTime,
-                    GrantedToEmail = perm.GrantedToV2?.User?.AdditionalData
-                        .TryGetValue("email", out var email) == true ? email?.ToString() : null,
-                    GrantedToDisplayName = perm.GrantedToV2?.User?.DisplayName,
-                    Roles = string.Join(", ", perm.Roles ?? []),
-                    HasPassword = perm.HasPassword ?? false
+                    Id                    = perm.Id ?? string.Empty,
+                    SharingType           = DetermineSharingType(perm),
+                    ShareLink             = perm.Link?.WebUrl,
+                    ExpirationDateTime    = perm.ExpirationDateTime?.UtcDateTime,
+                    GrantedToEmail        = perm.GrantedToV2?.User?.AdditionalData
+                                               .TryGetValue("email", out var email) == true
+                                               ? email?.ToString() : null,
+                    GrantedToDisplayName  = perm.GrantedToV2?.User?.DisplayName,
+                    Roles                 = string.Join(", ", perm.Roles ?? []),
+                    HasPassword           = perm.HasPassword ?? false
                 });
             }
         }
@@ -246,28 +270,7 @@ public class GraphService : IGraphService
         return result;
     }
 
-    private static SharingType DetermineSharingType(Microsoft.Graph.Models.Permission perm)
-    {
-        if (perm.Link == null) return SharingType.SpecificPeople;
-
-        return perm.Link.Scope switch
-        {
-            "anonymous" => SharingType.AnonymousLink,
-            "organization" => SharingType.OrganizationLink,
-            _ => SharingType.SpecificPeople
-        };
-    }
-
-    private static RiskLevel CalculateRiskLevel(List<SharePermission> permissions)
-    {
-        if (permissions.Any(p => p.SharingType == SharingType.AnonymousLink))
-            return RiskLevel.High;
-        if (permissions.Any(p => p.SharingType == SharingType.ExternalUser))
-            return RiskLevel.Medium;
-        if (permissions.Any(p => p.SharingType == SharingType.OrganizationLink))
-            return RiskLevel.Low;
-        return RiskLevel.Safe;
-    }
+    // ─── 権限削除 ────────────────────────────────────────────────────
 
     /// <inheritdoc/>
     public async Task<bool> RemovePermissionAsync(
@@ -278,7 +281,7 @@ public class GraphService : IGraphService
             var driveId = await GetDriveIdAsync(userId, ct);
             if (driveId == null) return false;
 
-            await _graphClient.Drives[driveId].Items[itemId].Permissions[permissionId]
+            await Client.Drives[driveId].Items[itemId].Permissions[permissionId]
                 .DeleteAsync(cancellationToken: ct);
             _logger.LogInformation("共有を削除しました: User={UserId}, Item={ItemId}, Perm={PermId}",
                 userId, itemId, permissionId);
@@ -300,14 +303,32 @@ public class GraphService : IGraphService
         foreach (var target in targets)
         {
             ct.ThrowIfCancellationRequested();
-
-            // API Throttling 対策：リクエスト間に短いウェイトを挟む
-            await Task.Delay(100, ct);
-
+            await Task.Delay(100, ct); // API Throttling 対策
             if (await RemovePermissionAsync(target.UserId, target.ItemId, target.PermissionId, ct))
                 successCount++;
         }
         return successCount;
     }
-}
 
+    // ─── ヘルパー ────────────────────────────────────────────────────
+
+    private static SharingType DetermineSharingType(Microsoft.Graph.Models.Permission perm)
+    {
+        if (perm.Link == null) return SharingType.SpecificPeople;
+
+        return perm.Link.Scope switch
+        {
+            "anonymous"    => SharingType.AnonymousLink,
+            "organization" => SharingType.OrganizationLink,
+            _              => SharingType.SpecificPeople
+        };
+    }
+
+    private static RiskLevel CalculateRiskLevel(List<SharePermission> permissions)
+    {
+        if (permissions.Any(p => p.SharingType == SharingType.AnonymousLink))  return RiskLevel.High;
+        if (permissions.Any(p => p.SharingType == SharingType.ExternalUser))   return RiskLevel.Medium;
+        if (permissions.Any(p => p.SharingType == SharingType.OrganizationLink)) return RiskLevel.Low;
+        return RiskLevel.Safe;
+    }
+}
