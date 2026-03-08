@@ -13,7 +13,6 @@ public class SharedItemsViewModelTests
     private readonly Mock<IGraphService> _graphMock = new();
     private readonly Mock<ISharedItemRepository> _repoMock = new();
     private readonly Mock<IAuditLogRepository> _auditMock = new();
-    private readonly Mock<IAuthService> _authMock = new();
 
     [Fact]
     public async Task LoadAsync_ShouldPopulateDisplayItems()
@@ -27,8 +26,7 @@ public class SharedItemsViewModelTests
         _repoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(items);
 
         var vm = new SharedItemsViewModel(
-            _graphMock.Object, _repoMock.Object,
-            _auditMock.Object, _authMock.Object);
+            _graphMock.Object, _repoMock.Object, _auditMock.Object);
 
         // Act
         await vm.LoadAsync();
@@ -50,8 +48,7 @@ public class SharedItemsViewModelTests
         _repoMock.Setup(r => r.GetAllAsync()).ReturnsAsync(items);
 
         var vm = new SharedItemsViewModel(
-            _graphMock.Object, _repoMock.Object,
-            _auditMock.Object, _authMock.Object);
+            _graphMock.Object, _repoMock.Object, _auditMock.Object);
 
         await vm.LoadAsync();
 

@@ -12,7 +12,6 @@ public partial class SharedItemsViewModel : ObservableObject
     private readonly IGraphService _graphService;
     private readonly ISharedItemRepository _repository;
     private readonly IAuditLogRepository _auditLogRepository;
-    private readonly IAuthService _authService;
     private List<SharedItem> _allItems = [];
 
     [ObservableProperty] private ObservableCollection<SharedItem> _displayItems = [];
@@ -25,13 +24,11 @@ public partial class SharedItemsViewModel : ObservableObject
     public SharedItemsViewModel(
         IGraphService graphService,
         ISharedItemRepository repository,
-        IAuditLogRepository auditLogRepository,
-        IAuthService authService)
+        IAuditLogRepository auditLogRepository)
     {
         _graphService = graphService;
         _repository = repository;
         _auditLogRepository = auditLogRepository;
-        _authService = authService;
     }
 
     [RelayCommand]
@@ -81,7 +78,7 @@ public partial class SharedItemsViewModel : ObservableObject
                 await _auditLogRepository.AddAsync(new AuditLog
                 {
                     ExecutedAt = DateTime.UtcNow,
-                    ExecutedBy = _authService.SignedInUserEmail ?? "unknown",
+                    ExecutedBy = Environment.UserName,
                     Action = "RemovePermission",
                     TargetItemId = item.Id,
                     TargetItemName = item.Name,

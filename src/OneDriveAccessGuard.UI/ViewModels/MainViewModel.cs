@@ -1,12 +1,10 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using OneDriveAccessGuard.Core.Interfaces;
 
 namespace OneDriveAccessGuard.UI.ViewModels;
 
 public partial class MainViewModel : ObservableObject
 {
-    private readonly IAuthService _authService;
     private readonly DashboardViewModel _dashboardVm;
     private readonly ScanViewModel _scanVm;
     private readonly SharedItemsViewModel _sharedItemsVm;
@@ -40,26 +38,22 @@ public partial class MainViewModel : ObservableObject
     ];
 
     public MainViewModel(
-        IAuthService authService,
         DashboardViewModel dashboardVm,
         ScanViewModel scanVm,
         SharedItemsViewModel sharedItemsVm)
     {
-        _authService = authService;
         _dashboardVm = dashboardVm;
         _scanVm = scanVm;
         _sharedItemsVm = sharedItemsVm;
     }
 
-    public async Task InitializeAsync()
+    public Task InitializeAsync()
     {
-        // 認証
-        await _authService.SignInAsync();
-        SignedInUserName = _authService.SignedInUserName ?? string.Empty;
-        SignedInUserEmail = _authService.SignedInUserEmail ?? string.Empty;
-
-        // 初期ページ表示
+        // 証明書認証はサインイン不要のため、Windowsユーザー名を表示
+        SignedInUserName = Environment.UserName;
+        SignedInUserEmail = string.Empty;
         SelectedNavItem = NavigationItems[0];
+        return Task.CompletedTask;
     }
 
     partial void OnSelectedNavItemChanged(NavItem? value)
@@ -81,14 +75,6 @@ public partial class MainViewModel : ObservableObject
     {
         SelectedNavItem = NavigationItems.First(n => n.Key == "scan");
         await _scanVm.StartScanCommand.ExecuteAsync(null);
-    }
-
-    [RelayCommand]
-    private async Task SignOutAsync()
-    {
-        await _authService.SignOutAsync();
-        SignedInUserName = string.Empty;
-        SignedInUserEmail = string.Empty;
     }
 }
 

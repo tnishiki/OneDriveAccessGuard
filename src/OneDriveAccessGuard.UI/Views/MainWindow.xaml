@@ -117,18 +117,6 @@
                     </ListBox.ItemContainerStyle>
                 </ListBox>
 
-                <!-- サインアウトボタン（下部） -->
-                <Button DockPanel.Dock="Bottom"
-                        Command="{Binding SignOutCommand}"
-                        Margin="16" Padding="12,8"
-                        Background="Transparent"
-                        BorderThickness="1" BorderBrush="#FFFFFF40"
-                        Foreground="White">
-                    <StackPanel Orientation="Horizontal">
-                        <materialDesign:PackIcon Kind="Logout" Width="16" Height="16"/>
-                        <TextBlock Text="サインアウト" Margin="8,0,0,0" FontSize="12"/>
-                    </StackPanel>
-                </Button>
             </DockPanel>
         </Border>
 

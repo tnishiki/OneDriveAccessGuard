@@ -12,6 +12,9 @@
                 <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesign2.Defaults.xaml" />
             </ResourceDictionary.MergedDictionaries>
 
+            <!-- コンバーター -->
+            <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+
             <!-- リスクレベル色定義 -->
             <SolidColorBrush x:Key="RiskHighBrush"   Color="#C62828"/>
             <SolidColorBrush x:Key="RiskMediumBrush" Color="#EF6C00"/>

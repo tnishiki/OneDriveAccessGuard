@@ -1,13 +1,13 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.EntityFrameworkCore;
-using Serilog;
+using Microsoft.Extensions.Logging;
 using OneDriveAccessGuard.Core.Interfaces;
-using OneDriveAccessGuard.Infrastructure.Auth;
-using OneDriveAccessGuard.Infrastructure.Graph;
 using OneDriveAccessGuard.Infrastructure.Data;
+using OneDriveAccessGuard.Infrastructure.Graph;
 using OneDriveAccessGuard.UI.ViewModels;
 using OneDriveAccessGuard.UI.Views;
+using Serilog;
 using System.IO;
 using System.Windows;
 
@@ -53,15 +53,13 @@ public partial class App : Application
     {
         var config = context.Configuration;
 
-        // 認証サービス
-        services.AddSingleton<IAuthService>(sp =>
-            new MsalAuthService(
+        // Graph サービス
+        services.AddSingleton<IGraphService>(sp =>
+            new GraphService(
                 clientId: config["AzureAd:ClientId"] ?? throw new InvalidOperationException("ClientId が未設定"),
                 tenantId: config["AzureAd:TenantId"] ?? throw new InvalidOperationException("TenantId が未設定"),
-                logger: sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<MsalAuthService>>()));
-
-        // Graph サービス
-        services.AddSingleton<IGraphService, GraphService>();
+                thumbprint: config["AzureAd:CertificateThumbprint"] ?? throw new InvalidOperationException("CertificateThumbprint が未設定"),
+                logger: sp.GetRequiredService<ILogger<GraphService>>()));
 
         // SQLite DB
         var dbPath = Path.Combine(
@@ -73,17 +71,17 @@ public partial class App : Application
         */
         Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!); // DBフォルダを事前作成
         services.AddDbContext<AccessGuardDbContext>(opt =>
-            opt.UseSqlite($"Data Source={dbPath}"));
+            opt.UseSqlite($"Data Source={dbPath}"),
+            ServiceLifetime.Transient);
 
-        // ★ リポジトリの登録（追加）
-        services.AddScoped<ISharedItemRepository, SharedItemRepository>();
-        services.AddScoped<IAuditLogRepository, AuditLogRepository>();
+        // ★ リポジトリの登録
+        services.AddTransient<ISharedItemRepository, SharedItemRepository>();
+        services.AddTransient<IAuditLogRepository, AuditLogRepository>();
         // ViewModels
         services.AddTransient<MainViewModel>();
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<ScanViewModel>();
         services.AddTransient<SharedItemsViewModel>();
-        services.AddTransient<LoginViewModel>();
 
         // Views
         services.AddTransient<MainWindow>();

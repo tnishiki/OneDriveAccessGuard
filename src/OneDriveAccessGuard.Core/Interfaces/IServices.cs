@@ -22,20 +22,6 @@ public interface IGraphService
 }
 
 /// <summary>
-/// 認証サービスインターフェース
-/// </summary>
-public interface IAuthService
-{
-    bool IsSignedIn { get; }
-    string? SignedInUserName { get; }
-    string? SignedInUserEmail { get; }
-
-    Task<bool> SignInAsync(CancellationToken ct = default);
-    Task SignOutAsync();
-    Task<string> GetAccessTokenAsync(CancellationToken ct = default);
-}
-
-/// <summary>
 /// スキャンサービスインターフェース
 /// </summary>
 public interface IScanService

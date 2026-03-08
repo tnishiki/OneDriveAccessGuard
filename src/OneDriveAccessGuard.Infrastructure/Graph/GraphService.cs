@@ -1,12 +1,13 @@
 using Microsoft.Graph;
 using GraphModels = Microsoft.Graph.Models;
 using Microsoft.Kiota.Abstractions;
-using Microsoft.Kiota.Abstractions.Authentication;
 using Microsoft.Extensions.Logging;
+using Azure.Identity;
+using System.Security.Cryptography.X509Certificates;
+using CoreModels = OneDriveAccessGuard.Core.Models;
 using OneDriveAccessGuard.Core.Interfaces;
 using OneDriveAccessGuard.Core.Models;
 using OneDriveAccessGuard.Core.Enums;
-using CoreModels = OneDriveAccessGuard.Core.Models;
 
 namespace OneDriveAccessGuard.Infrastructure.Graph;
 
@@ -18,13 +19,37 @@ public class GraphService : IGraphService
     private readonly GraphServiceClient _graphClient;
     private readonly ILogger<GraphService> _logger;
 
-    public GraphService(IAuthService authService, ILogger<GraphService> logger)
+    private static readonly string[] Scopes =
+        [
+            "https://graph.microsoft.com/.default"
+        ];
+
+    public GraphService(string clientId, string tenantId, string thumbprint, ILogger<GraphService> logger)
     {
         _logger = logger;
-        var provider = new TokenAuthProvider(authService);
-        _graphClient = new GraphServiceClient(provider);
+        var credential = GetClientCertCredential(tenantId, clientId, thumbprint);
+        _graphClient = new GraphServiceClient(credential, Scopes);
     }
+    private static ClientCertificateCredential GetClientCertCredential(
+           string tenantId, string clientId, string thumbprint)
+    {
+        using var store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+        store.Open(OpenFlags.ReadOnly);
 
+        var certificate = store.Certificates
+            .Cast<X509Certificate2>()
+            .FirstOrDefault(cert =>
+                string.Equals(cert.Thumbprint, thumbprint, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException(
+                $"証明書が見つかりません。Thumbprint: {thumbprint}");
+
+        var options = new ClientCertificateCredentialOptions
+        {
+            AuthorityHost = AzureAuthorityHosts.AzurePublicCloud
+        };
+
+        return new ClientCertificateCredential(tenantId, clientId, certificate, options);
+    }
     /// <inheritdoc/>
     public async Task<IEnumerable<OrgUser>> GetAllUsersAsync(CancellationToken ct = default)
     {
@@ -83,6 +108,10 @@ public class GraphService : IGraphService
                 _driveIdCache[userId] = drive.Id;
                 return drive.Id;
             }
+        }
+        catch(ServiceException ex)
+        {
+            _logger.LogWarning(ex, "ユーザー {UserId} のドライブ取得に失敗しました", ex.ResponseHeaders);
         }
         catch (Exception ex)
         {
@@ -282,24 +311,3 @@ public class GraphService : IGraphService
     }
 }
 
-/// <summary>
-/// MSAL トークンを Graph SDK に渡す認証プロバイダー
-/// </summary>
-internal class TokenAuthProvider : IAuthenticationProvider
-{
-    private readonly IAuthService _authService;
-
-    public TokenAuthProvider(IAuthService authService)
-    {
-        _authService = authService;
-    }
-
-    public async Task AuthenticateRequestAsync(
-        RequestInformation request,
-        Dictionary<string, object>? additionalAuthenticationContext = null,
-        CancellationToken ct = default)
-    {
-        var token = await _authService.GetAccessTokenAsync(ct);
-        request.Headers.Add("Authorization", $"Bearer {token}");
-    }
-}
