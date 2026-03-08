@@ -168,7 +168,7 @@ public class GraphService : IGraphService
             var driveId = await GetDriveIdAsync(userId, ct);
             if (driveId == null) return sharedItems;
 
-            await ScanDriveFolderAsync(userId, driveId, "root", sharedItems, progress, ct);
+            await ScanDriveWithDeltaAsync(userId, driveId, sharedItems, ct);
         }
         catch (Exception ex)
         {
@@ -178,68 +178,104 @@ public class GraphService : IGraphService
         return sharedItems;
     }
 
-    private async Task ScanDriveFolderAsync(
+    /// <summary>
+    /// /delta API でドライブ内の全アイテムをフラットに取得し、共有アイテムを抽出する。
+    /// 再帰的フォルダ走査と異なり、1 回のページング処理で全階層を網羅できる。
+    /// </summary>
+    private async Task ScanDriveWithDeltaAsync(
         string userId,
         string driveId,
-        string folderId,
         List<SharedItem> results,
-        IProgress<ScanProgress>? progress,
         CancellationToken ct)
     {
-        GraphModels.DriveItemCollectionResponse? response;
+        // Phase 1: delta で候補収集（変更なし）
+        var candidates = new List<GraphModels.DriveItem>();
 
         try
         {
-            response = folderId == "root"
-                ? await Client.Drives[driveId].Items["root"].Children.GetAsync(config =>
+            var page = await Client.Drives[driveId].Items["root"].Delta
+                .GetAsDeltaGetResponseAsync(config =>
                 {
-                    config.QueryParameters.Select = ["id", "name", "webUrl", "size", "createdDateTime", "lastModifiedDateTime", "folder", "shared"];
-                    config.QueryParameters.Top = 200;
-                }, ct)
-                : await Client.Drives[driveId].Items[folderId].Children.GetAsync(config =>
-                {
-                    config.QueryParameters.Select = ["id", "name", "webUrl", "size", "createdDateTime", "lastModifiedDateTime", "folder", "shared"];
-                    config.QueryParameters.Top = 200;
+                    config.QueryParameters.Select =
+                    [
+                        "id", "name", "webUrl", "size",
+                    "createdDateTime", "lastModifiedDateTime",
+                    "folder", "shared"
+                    ];
                 }, ct);
+
+            while (page != null)
+            {
+                foreach (var item in page.Value ?? [])
+                {
+                    if (item.Shared?.Scope == "anonymous" && item.Id != null)
+                        candidates.Add(item);  // ← ここでScope絞り込みも同時に行う
+                }
+
+                if (page.OdataNextLink == null) break;
+
+                page = await Client.Drives[driveId].Items["root"].Delta
+                    .WithUrl(page.OdataNextLink)
+                    .GetAsDeltaGetResponseAsync(cancellationToken: ct);
+            }
         }
         catch (ServiceException ex) when (ex.ResponseStatusCode == 404)
         {
+            _logger.LogWarning("ユーザー {UserId} のドライブが見つかりません", userId);
             return;
         }
 
-        if (response?.Value == null) return;
+        _logger.LogDebug("ユーザー {UserId}: {Count} 件の匿名共有候補を検出", userId, candidates.Count);
 
-        foreach (var item in response.Value)
+        if (candidates.Count == 0) return;
+
+        // Phase 2: Permissions APIを並列取得（同時3件でThrottling回避）
+        var semaphore = new SemaphoreSlim(3);
+        var localResults = new System.Collections.Concurrent.ConcurrentBag<SharedItem>();
+
+        var tasks = candidates.Select(async item =>
         {
-            ct.ThrowIfCancellationRequested();
-
-            if (item.Shared != null)
+            await semaphore.WaitAsync(ct);
+            try
             {
                 var permissions = await GetPermissionsAsync(driveId, item.Id!, ct);
                 if (permissions.Any(p => p.SharingType == SharingType.AnonymousLink))
                 {
-                    results.Add(new SharedItem
+                    localResults.Add(new SharedItem
                     {
-                        Id           = item.Id ?? string.Empty,
-                        Name         = item.Name ?? string.Empty,
-                        WebUrl       = permissions[0].ShareLink ?? string.Empty,
-                        OwnerId      = userId,
-                        SizeBytes        = item.Size ?? 0,
-                        CreatedDateTime  = item.CreatedDateTime?.UtcDateTime,
-                        LastModified     = item.LastModifiedDateTime?.UtcDateTime ?? DateTime.UtcNow,
-                        DetectedAt   = DateTime.UtcNow,
-                        IsFolder     = item.Folder != null,
-                        Permissions  = permissions,
-                        RiskLevel    = CalculateRiskLevel(permissions)
+                        Id = item.Id ?? string.Empty,
+                        Name = item.Name ?? string.Empty,
+                        WebUrl = permissions[0].ShareLink ?? string.Empty,
+                        OwnerId = userId,
+                        SizeBytes = item.Size ?? 0,
+                        CreatedDateTime = item.CreatedDateTime?.UtcDateTime,
+                        LastModified = item.LastModifiedDateTime?.UtcDateTime ?? DateTime.UtcNow,
+                        DetectedAt = DateTime.UtcNow,
+                        IsFolder = item.Folder != null,
+                        Permissions = permissions,
+                        RiskLevel = CalculateRiskLevel(permissions)
                     });
                 }
             }
+            catch (ServiceException ex) when (ex.ResponseStatusCode == 429)
+            {
+                // Throttling発生時はリトライ
+                var retryAfter = ex.ResponseHeaders?
+                    .TryGetValues("Retry-After", out var vals) == true
+                    ? int.Parse(vals.First()) : 10;
+                await Task.Delay(TimeSpan.FromSeconds(retryAfter), ct);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        });
 
-            if (item.Folder != null && item.Id != null)
-                await ScanDriveFolderAsync(userId, driveId, item.Id, results, progress, ct);
-        }
+        await Task.WhenAll(tasks);
+
+        foreach (var item in localResults)
+            results.Add(item);
     }
-
     private async Task<List<SharePermission>> GetPermissionsAsync(
         string driveId, string itemId, CancellationToken ct)
     {
