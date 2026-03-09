@@ -39,6 +39,8 @@ public partial class ScanViewModel : ObservableObject
         FoundItemsCount = 0;
         ScannedItems.Clear();
 
+        var uiContext = SynchronizationContext.Current!;
+
         var progress = new Progress<ScanProgress>(p =>
         {
             ProgressPercent = p.ProgressPercent;
@@ -54,37 +56,54 @@ public partial class ScanViewModel : ObservableObject
             int processed = 0;
             int total = users.Count();
 
-            foreach (var user in users)
+            var allItemsBag = new System.Collections.Concurrent.ConcurrentBag<SharedItem>();
+            var semaphore = new SemaphoreSlim(5); // 同時5ユーザーまで
+
+            var userTasks = users.Select(async user =>
             {
-                _cts.Token.ThrowIfCancellationRequested();
-
-                var items = await _graphService.GetSharedItemsAsync(
-                    user.Id, progress, _cts.Token);
-
-                foreach (var item in items)
+                await semaphore.WaitAsync(_cts.Token);
+                try
                 {
-                    item.OwnerDisplayName = user.DisplayName;
-                    item.OwnerEmail = user.Email;
-                    ScannedItems.Add(item);
+                    _cts.Token.ThrowIfCancellationRequested();
+                    var items = await _graphService.GetSharedItemsAsync(
+                        user.Id, progress, _cts.Token);
+                    foreach (var item in items)
+                    {
+                        item.OwnerDisplayName = user.DisplayName;
+                        item.OwnerEmail = user.Email;
+                        allItemsBag.Add(item);
+                        uiContext.Post(_ => ScannedItems.Add(item), null);
+                    }
+                    var count = Interlocked.Increment(ref processed);
+                    ((IProgress<ScanProgress>)progress).Report(new ScanProgress
+                    {
+                        ProcessedUsers = count,
+                        TotalUsers = total,
+                        CurrentUserName = user.DisplayName,
+                        FoundItemsCount = allItemsBag.Count
+                    });
                 }
-
-                allItems.AddRange(items);
-                processed++;
-
-                ((IProgress<ScanProgress>)progress).Report(new ScanProgress
+                finally
                 {
-                    ProcessedUsers = processed,
-                    TotalUsers = total,
-                    CurrentUserName = user.DisplayName,
-                    FoundItemsCount = allItems.Count
-                });
-            }
+                    semaphore.Release();
+                }
+            });
+
+            await Task.WhenAll(userTasks);
+
+            // ConcurrentBag → List に変換
+            allItems.AddRange(allItemsBag);
 
             await _repository.UpsertAsync(allItems);
             ScanStatus = ScanStatus.Completed;
             ProgressMessage = $"スキャン完了: {allItems.Count} 件の共有アイテムを検出";
         }
         catch (OperationCanceledException)
+        {
+            ScanStatus = ScanStatus.Cancelled;
+            ProgressMessage = "スキャンがキャンセルされました";
+        }
+        catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException))
         {
             ScanStatus = ScanStatus.Cancelled;
             ProgressMessage = "スキャンがキャンセルされました";
