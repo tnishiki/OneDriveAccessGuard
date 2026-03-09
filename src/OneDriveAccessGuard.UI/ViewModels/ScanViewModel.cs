@@ -19,6 +19,7 @@ public partial class ScanViewModel : ObservableObject
     [ObservableProperty] private int _foundItemsCount;
     [ObservableProperty] private bool _canCancel;
     [ObservableProperty] private bool _excludeGuests = true;
+    [ObservableProperty] private string _accountFilter = string.Empty;
 
     public ObservableCollection<SharedItem> ScannedItems { get; } = new();
 
@@ -39,6 +40,8 @@ public partial class ScanViewModel : ObservableObject
         FoundItemsCount = 0;
         ScannedItems.Clear();
 
+        var uiContext = SynchronizationContext.Current!;
+
         var progress = new Progress<ScanProgress>(p =>
         {
             ProgressPercent = p.ProgressPercent;
@@ -48,7 +51,9 @@ public partial class ScanViewModel : ObservableObject
 
         try
         {
-            var users = await _graphService.GetAllUsersAsync(ExcludeGuests, _cts.Token);
+            var accountFilter = string.IsNullOrWhiteSpace(AccountFilter) ? null : AccountFilter.Trim();
+            var users = await _graphService.GetAllUsersAsync(ExcludeGuests, accountFilter, _cts.Token);
+
             var allItems = new List<SharedItem>();
 
             int processed = 0;
@@ -56,24 +61,21 @@ public partial class ScanViewModel : ObservableObject
             var allItemsBag = new System.Collections.Concurrent.ConcurrentBag<SharedItem>();
             var semaphore = new SemaphoreSlim(5); // 同時5ユーザーまで
 
-
             var userTasks = users.Select(async user =>
             {
                 await semaphore.WaitAsync(_cts.Token);
                 try
                 {
                     _cts.Token.ThrowIfCancellationRequested();
-
                     var items = await _graphService.GetSharedItemsAsync(
                         user.Id, progress, _cts.Token);
-
                     foreach (var item in items)
                     {
                         item.OwnerDisplayName = user.DisplayName;
                         item.OwnerEmail = user.Email;
                         allItemsBag.Add(item);
+                        uiContext.Post(_ => ScannedItems.Add(item), null);
                     }
-
                     var count = Interlocked.Increment(ref processed);
                     ((IProgress<ScanProgress>)progress).Report(new ScanProgress
                     {
@@ -93,11 +95,6 @@ public partial class ScanViewModel : ObservableObject
 
             // ConcurrentBag → List に変換
             allItems.AddRange(allItemsBag);
-            // UIスレッドで ScannedItems に反映（Task.WhenAll完了後なので安全）
-            foreach (var item in allItems)
-            {
-                ScannedItems.Add(item);
-            }
 
             await _repository.UpsertAsync(allItems);
             ScanStatus = ScanStatus.Completed;

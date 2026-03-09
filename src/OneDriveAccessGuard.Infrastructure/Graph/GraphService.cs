@@ -81,22 +81,46 @@ public class GraphService : IGraphService
     // ─── ユーザー一覧 ────────────────────────────────────────────────
 
     /// <inheritdoc/>
-    public async Task<IEnumerable<OrgUser>> GetAllUsersAsync(bool excludeGuests = false, CancellationToken ct = default)
+    public async Task<IEnumerable<OrgUser>> GetAllUsersAsync(
+        bool excludeGuests = false,
+        string? accountFilter = null,
+        CancellationToken ct = default)
     {
         var users = new List<OrgUser>();
 
         try
         {
-            var filter = excludeGuests
+            var odataFilter = excludeGuests
                 ? "accountEnabled eq true and userType eq 'Member'"
                 : "accountEnabled eq true";
 
-            var response = await Client.Users.GetAsync(config =>
+            var hasAccountFilter = !string.IsNullOrWhiteSpace(accountFilter);
+
+            GraphModels.UserCollectionResponse? response;
+
+            if (hasAccountFilter)
             {
-                config.QueryParameters.Select = ["id", "displayName", "mail", "department", "jobTitle", "accountEnabled"];
-                config.QueryParameters.Top = 999;
-                config.QueryParameters.Filter = filter;
-            }, ct);
+                // $search で displayName / mail の部分一致検索（ConsistencyLevel: eventual が必須）
+                // $filter と $search は同時使用可能（$count=true も必要）
+                response = await Client.Users.GetAsync(config =>
+                {
+                    config.QueryParameters.Select = ["id", "displayName", "mail", "department", "jobTitle", "accountEnabled"];
+                    config.QueryParameters.Top    = 999;
+                    config.QueryParameters.Search = $"\"displayName:{accountFilter}\" OR \"mail:{accountFilter}\"";
+                    config.QueryParameters.Filter = odataFilter;
+                    config.QueryParameters.Count  = true;
+                    config.Headers.Add("ConsistencyLevel", "eventual");
+                }, ct);
+            }
+            else
+            {
+                response = await Client.Users.GetAsync(config =>
+                {
+                    config.QueryParameters.Select = ["id", "displayName", "mail", "department", "jobTitle", "accountEnabled"];
+                    config.QueryParameters.Top    = 999;
+                    config.QueryParameters.Filter = odataFilter;
+                }, ct);
+            }
 
             var pageIterator = PageIterator<GraphModels.User, GraphModels.UserCollectionResponse>.CreatePageIterator(
                 Client,
@@ -116,7 +140,12 @@ public class GraphService : IGraphService
                 });
 
             await pageIterator.IterateAsync(ct);
-            _logger.LogInformation("{Count} 人のユーザーを取得しました", users.Count);
+            _logger.LogInformation(
+                hasAccountFilter
+                    ? "{Count} 人のユーザーを取得しました（フィルター: {Filter}）"
+                    : "{Count} 人のユーザーを取得しました",
+                users.Count,
+                accountFilter);
         }
         catch (Exception ex)
         {

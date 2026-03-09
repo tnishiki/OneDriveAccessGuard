@@ -33,7 +33,16 @@
             <CheckBox Content="ゲストアカウントは除く"
                       IsChecked="{Binding ExcludeGuests}"
                       IsEnabled="{Binding CanCancel, Converter={StaticResource InverseBooleanConverter}}"
-                      Margin="0,0,0,16" FontSize="14"/>
+                      Margin="0,0,0,12" FontSize="14"/>
+
+            <!-- アカウント名フィルター -->
+            <TextBox Text="{Binding AccountFilter, UpdateSourceTrigger=PropertyChanged}"
+                     IsEnabled="{Binding CanCancel, Converter={StaticResource InverseBooleanConverter}}"
+                     materialDesign:HintAssist.Hint="アカウント名（空白の場合は全ユーザーを対象）"
+                     materialDesign:HintAssist.IsFloating="True"
+                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
+                     Width="360" HorizontalAlignment="Left"
+                     Margin="0,0,0,16" FontSize="14"/>
 
             <!-- ボタン -->
             <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
