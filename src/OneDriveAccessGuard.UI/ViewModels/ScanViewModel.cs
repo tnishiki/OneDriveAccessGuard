@@ -58,7 +58,6 @@ public partial class ScanViewModel : ObservableObject
 
             int processed = 0;
             int total = users.Count();
-
             var allItemsBag = new System.Collections.Concurrent.ConcurrentBag<SharedItem>();
             var semaphore = new SemaphoreSlim(5); // 同時5ユーザーまで
 
