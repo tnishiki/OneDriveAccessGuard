@@ -19,6 +19,7 @@ public partial class ScanViewModel : ObservableObject
     [ObservableProperty] private int _foundItemsCount;
     [ObservableProperty] private bool _canCancel;
     [ObservableProperty] private bool _excludeGuests = true;
+    [ObservableProperty] private string _accountFilter = string.Empty;
 
     public ObservableCollection<SharedItem> ScannedItems { get; } = new();
 
@@ -50,7 +51,9 @@ public partial class ScanViewModel : ObservableObject
 
         try
         {
-            var users = await _graphService.GetAllUsersAsync(ExcludeGuests, _cts.Token);
+            var accountFilter = string.IsNullOrWhiteSpace(AccountFilter) ? null : AccountFilter.Trim();
+            var users = await _graphService.GetAllUsersAsync(ExcludeGuests, accountFilter, _cts.Token);
+
             var allItems = new List<SharedItem>();
 
             int processed = 0;

@@ -26,7 +26,8 @@ public interface IGraphService
 {
     /// <summary>組織内全ユーザーを取得する</summary>
     /// <param name="excludeGuests">true のとき ゲストアカウント (userType=Guest) を除外する</param>
-    Task<IEnumerable<OrgUser>> GetAllUsersAsync(bool excludeGuests = false, CancellationToken ct = default);
+    /// <param name="accountFilter">displayName または mail の部分一致フィルター（null/空の場合は全件）</param>
+    Task<IEnumerable<OrgUser>> GetAllUsersAsync(bool excludeGuests = false, string? accountFilter = null, CancellationToken ct = default);
 
     /// <summary>指定ユーザーのOneDrive上の共有アイテムを取得する</summary>
     Task<IEnumerable<SharedItem>> GetSharedItemsAsync(string userId, IProgress<ScanProgress>? progress = null, CancellationToken ct = default);
