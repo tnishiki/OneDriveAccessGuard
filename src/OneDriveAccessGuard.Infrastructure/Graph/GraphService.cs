@@ -267,14 +267,37 @@ public class GraphService : IGraphService
             await semaphore.WaitAsync(ct);
             try
             {
-                var permissions = await GetPermissionsAsync(driveId, item.Id!, ct);
-                if (permissions.Any(p => p.SharingType == SharingType.AnonymousLink))
+                // [Fix] 429 Throttling 時は Retry-After に従って最大3回リトライする
+                List<SharePermission> permissions = [];
+                for (int attempt = 0; attempt < 3; attempt++)
+                {
+                    try
+                    {
+                        permissions = await GetPermissionsAsync(driveId, item.Id!, ct);
+                        break;
+                    }
+                    catch (ServiceException ex) when (ex.ResponseStatusCode == 429)
+                    {
+                        if (attempt == 2) throw;
+                        var retryAfter = ex.ResponseHeaders?
+                            .TryGetValues("Retry-After", out var vals) == true
+                            ? int.Parse(vals.First()) : 10;
+                        _logger.LogWarning(
+                            "Throttling (429)。{Seconds}秒後にリトライします（試行 {Attempt}/3）",
+                            retryAfter, attempt + 1);
+                        await Task.Delay(TimeSpan.FromSeconds(retryAfter), ct);
+                    }
+                }
+
+                // [Fix] permissions[0] ではなく AnonymousLink を持つ権限の ShareLink を使用する
+                var anonymousPerm = permissions.FirstOrDefault(p => p.SharingType == SharingType.AnonymousLink);
+                if (anonymousPerm != null)
                 {
                     localResults.Add(new SharedItem
                     {
                         Id = item.Id ?? string.Empty,
                         Name = item.Name ?? string.Empty,
-                        WebUrl = permissions[0].ShareLink ?? string.Empty,
+                        WebUrl = anonymousPerm.ShareLink ?? item.WebUrl ?? string.Empty,
                         OwnerId = userId,
                         SizeBytes = item.Size ?? 0,
                         CreatedDateTime = item.CreatedDateTime?.UtcDateTime,
@@ -285,14 +308,6 @@ public class GraphService : IGraphService
                         RiskLevel = CalculateRiskLevel(permissions)
                     });
                 }
-            }
-            catch (ServiceException ex) when (ex.ResponseStatusCode == 429)
-            {
-                // Throttling発生時はリトライ
-                var retryAfter = ex.ResponseHeaders?
-                    .TryGetValues("Retry-After", out var vals) == true
-                    ? int.Parse(vals.First()) : 10;
-                await Task.Delay(TimeSpan.FromSeconds(retryAfter), ct);
             }
             finally
             {
