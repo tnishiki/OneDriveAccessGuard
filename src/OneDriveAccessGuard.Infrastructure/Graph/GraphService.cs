@@ -237,8 +237,13 @@ public class GraphService : IGraphService
             {
                 foreach (var item in page.Value ?? [])
                 {
-                    if (item.Shared?.Scope == "anonymous" && item.Id != null)
-                        candidates.Add(item);  // ← ここでScope絞り込みも同時に行う
+                    if (item.Shared != null)
+                    {
+                        if (item.Shared?.Scope == "anonymous" && item.Id != null)
+                        {
+                            candidates.Add(item);  // ← ここでScope絞り込みも同時に行う
+                        }
+                    }
                 }
 
                 if (page.OdataNextLink == null) break;
