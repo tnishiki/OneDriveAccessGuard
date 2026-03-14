@@ -19,6 +19,8 @@ public partial class ScanViewModel : ObservableObject
     [ObservableProperty] private int _foundItemsCount;
     [ObservableProperty] private bool _canCancel;
     [ObservableProperty] private bool _excludeGuests = true;
+    [ObservableProperty] private string _scanLog = string.Empty;
+    [ObservableProperty] private bool _showLatestLog;
 
     public ObservableCollection<SharedItem> ScannedItems { get; } = new();
 
@@ -37,7 +39,10 @@ public partial class ScanViewModel : ObservableObject
         ScanStatus = ScanStatus.Running;
         CanCancel = true;
         FoundItemsCount = 0;
+        ScanLog = string.Empty;
         ScannedItems.Clear();
+
+        _graphService.LogCallback = msg => ScanLog += msg + Environment.NewLine;
 
         var progress = new Progress<ScanProgress>(p =>
         {
@@ -59,7 +64,7 @@ public partial class ScanViewModel : ObservableObject
                 _cts.Token.ThrowIfCancellationRequested();
 
                 var items = await _graphService.GetSharedItemsAsync(
-                    user.Id, progress, _cts.Token);
+                    user.Id,user.DisplayName, progress, _cts.Token);
 
                 foreach (var item in items)
                 {

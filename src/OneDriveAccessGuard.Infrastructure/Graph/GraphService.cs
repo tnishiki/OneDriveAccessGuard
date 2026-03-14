@@ -1,11 +1,12 @@
-using Microsoft.Graph;
-using GraphModels = Microsoft.Graph.Models;
-using Microsoft.Extensions.Logging;
 using Azure.Identity;
-using System.Security.Cryptography.X509Certificates;
+using DocumentFormat.OpenXml.Wordprocessing;
+using Microsoft.Extensions.Logging;
+using Microsoft.Graph;
+using OneDriveAccessGuard.Core.Enums;
 using OneDriveAccessGuard.Core.Interfaces;
 using OneDriveAccessGuard.Core.Models;
-using OneDriveAccessGuard.Core.Enums;
+using System.Security.Cryptography.X509Certificates;
+using GraphModels = Microsoft.Graph.Models;
 
 namespace OneDriveAccessGuard.Infrastructure.Graph;
 
@@ -19,6 +20,10 @@ public class GraphService : IGraphService
 
     private GraphServiceClient? _graphClient;
     private readonly Dictionary<string, string> _driveIdCache = new();
+
+    public Action<string>? LogCallback { get; set; }
+
+    private void Callback(string message) => LogCallback?.Invoke(message);
 
     private static readonly string[] Scopes = ["https://graph.microsoft.com/.default"];
 
@@ -57,6 +62,7 @@ public class GraphService : IGraphService
         _graphClient = null;
         _driveIdCache.Clear();
         _logger.LogInformation("GraphService クライアントをリセットしました");
+        Callback("GraphService クライアントをリセットしました");
     }
 
     private static ClientCertificateCredential BuildCredential(
@@ -105,22 +111,24 @@ public class GraphService : IGraphService
                 {
                     users.Add(new OrgUser
                     {
-                        Id          = user.Id          ?? string.Empty,
+                        Id = user.Id ?? string.Empty,
                         DisplayName = user.DisplayName ?? string.Empty,
-                        Email       = user.Mail        ?? string.Empty,
-                        Department  = user.Department,
-                        JobTitle    = user.JobTitle,
-                        IsEnabled   = user.AccountEnabled ?? false
+                        Email = user.Mail ?? string.Empty,
+                        Department = user.Department,
+                        JobTitle = user.JobTitle,
+                        IsEnabled = user.AccountEnabled ?? false
                     });
                     return true;
                 });
 
             await pageIterator.IterateAsync(ct);
             _logger.LogInformation("{Count} 人のユーザーを取得しました", users.Count);
+            Callback($"{users.Count} 人のユーザーを取得しました");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "ユーザー一覧の取得に失敗しました");
+            Callback($"[ERROR] ユーザー一覧の取得に失敗しました: {ex.Message}");
             throw;
         }
 
@@ -146,10 +154,12 @@ public class GraphService : IGraphService
         catch (ServiceException ex)
         {
             _logger.LogWarning(ex, "ユーザー {UserId} のドライブ取得に失敗しました", userId);
+            Callback($"[WARN] ユーザー {userId} のドライブ取得に失敗しました: {ex.Message}");
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "ユーザー {UserId} のドライブ取得に失敗しました", userId);
+            Callback($"[WARN] ユーザー {userId} のドライブ取得に失敗しました: {ex.Message}");
         }
 
         return null;
@@ -158,6 +168,7 @@ public class GraphService : IGraphService
     /// <inheritdoc/>
     public async Task<IEnumerable<SharedItem>> GetSharedItemsAsync(
         string userId,
+        string DisplayName,
         IProgress<ScanProgress>? progress = null,
         CancellationToken ct = default)
     {
@@ -168,11 +179,12 @@ public class GraphService : IGraphService
             var driveId = await GetDriveIdAsync(userId, ct);
             if (driveId == null) return sharedItems;
 
-            await ScanDriveWithDeltaAsync(userId, driveId, sharedItems, ct);
+            await ScanDriveWithDeltaAsync(userId, DisplayName, driveId, sharedItems, ct);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "ユーザー {UserId} のスキャン中にエラーが発生しました", userId);
+            _logger.LogWarning(ex, $"ユーザー {DisplayName} のスキャン中にエラーが発生しました");
+            Callback($"[WARN] ユーザー {DisplayName} のスキャン中にエラーが発生しました: {ex.Message}");
         }
 
         return sharedItems;
@@ -184,12 +196,14 @@ public class GraphService : IGraphService
     /// </summary>
     private async Task ScanDriveWithDeltaAsync(
         string userId,
+        string DisplayName,
         string driveId,
         List<SharedItem> results,
         CancellationToken ct)
     {
         // Phase 1: delta で候補収集（変更なし）
         var candidates = new List<GraphModels.DriveItem>();
+        int totalItemCount = 0;
 
         try
         {
@@ -208,8 +222,14 @@ public class GraphService : IGraphService
             {
                 foreach (var item in page.Value ?? [])
                 {
-                    if (item.Shared?.Scope == "anonymous" && item.Id != null)
-                        candidates.Add(item);  // ← ここでScope絞り込みも同時に行う
+                    totalItemCount++;
+                    if (item.Shared != null)
+                    {
+                        if (item.Shared?.Scope == "anonymous")
+                        {
+                            candidates.Add(item);  // ← ここでScope絞り込みも同時に行う
+                        }
+                    }
                 }
 
                 if (page.OdataNextLink == null) break;
@@ -221,11 +241,13 @@ public class GraphService : IGraphService
         }
         catch (ServiceException ex) when (ex.ResponseStatusCode == 404)
         {
-            _logger.LogWarning("ユーザー {UserId} のドライブが見つかりません", userId);
+            _logger.LogWarning($"ユーザー {DisplayName} のドライブが見つかりません");
+            Callback($"[WARN] ユーザー {DisplayName} のドライブが見つかりません");
             return;
         }
 
-        _logger.LogDebug("ユーザー {UserId}: {Count} 件の匿名共有候補を検出", userId, candidates.Count);
+        _logger.LogDebug($"ユーザー {DisplayName}: {candidates.Count} 件の匿名共有候補を検出 (全 {totalItemCount} ファイル)");
+        Callback($"ユーザー {DisplayName}: {candidates.Count} 件の匿名共有候補を検出 (全 {totalItemCount} ファイル)");
 
         if (candidates.Count == 0) return;
 
@@ -290,22 +312,23 @@ public class GraphService : IGraphService
             {
                 result.Add(new SharePermission
                 {
-                    Id                    = perm.Id ?? string.Empty,
-                    SharingType           = DetermineSharingType(perm),
-                    ShareLink             = perm.Link?.WebUrl,
-                    ExpirationDateTime    = perm.ExpirationDateTime?.UtcDateTime,
-                    GrantedToEmail        = perm.GrantedToV2?.User?.AdditionalData
+                    Id = perm.Id ?? string.Empty,
+                    SharingType = DetermineSharingType(perm),
+                    ShareLink = perm.Link?.WebUrl,
+                    ExpirationDateTime = perm.ExpirationDateTime?.UtcDateTime,
+                    GrantedToEmail = perm.GrantedToV2?.User?.AdditionalData
                                                .TryGetValue("email", out var email) == true
                                                ? email?.ToString() : null,
-                    GrantedToDisplayName  = perm.GrantedToV2?.User?.DisplayName,
-                    Roles                 = string.Join(", ", perm.Roles ?? []),
-                    HasPassword           = perm.HasPassword ?? false
+                    GrantedToDisplayName = perm.GrantedToV2?.User?.DisplayName,
+                    Roles = string.Join(", ", perm.Roles ?? []),
+                    HasPassword = perm.HasPassword ?? false
                 });
             }
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "アイテム {ItemId} の権限取得に失敗しました", itemId);
+            Callback($"[WARN] アイテム {itemId} の権限取得に失敗しました: {ex.Message}");
         }
 
         return result;
@@ -326,11 +349,13 @@ public class GraphService : IGraphService
                 .DeleteAsync(cancellationToken: ct);
             _logger.LogInformation("共有を削除しました: User={UserId}, Item={ItemId}, Perm={PermId}",
                 userId, itemId, permissionId);
+            Callback($"共有を削除しました: User={userId}, Item={itemId}, Perm={permissionId}");
             return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "共有削除に失敗しました: User={UserId}, Item={ItemId}", userId, itemId);
+            Callback($"[ERROR] 共有削除に失敗しました: User={userId}, Item={itemId}: {ex.Message}");
             return false;
         }
     }
@@ -359,16 +384,16 @@ public class GraphService : IGraphService
 
         return perm.Link.Scope switch
         {
-            "anonymous"    => SharingType.AnonymousLink,
+            "anonymous" => SharingType.AnonymousLink,
             "organization" => SharingType.OrganizationLink,
-            _              => SharingType.SpecificPeople
+            _ => SharingType.SpecificPeople
         };
     }
 
     private static RiskLevel CalculateRiskLevel(List<SharePermission> permissions)
     {
-        if (permissions.Any(p => p.SharingType == SharingType.AnonymousLink))  return RiskLevel.High;
-        if (permissions.Any(p => p.SharingType == SharingType.ExternalUser))   return RiskLevel.Medium;
+        if (permissions.Any(p => p.SharingType == SharingType.AnonymousLink)) return RiskLevel.High;
+        if (permissions.Any(p => p.SharingType == SharingType.ExternalUser)) return RiskLevel.Medium;
         if (permissions.Any(p => p.SharingType == SharingType.OrganizationLink)) return RiskLevel.Low;
         return RiskLevel.Safe;
     }
