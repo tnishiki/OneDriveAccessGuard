@@ -11,6 +11,7 @@ public partial class ScanViewModel : ObservableObject
 {
     private readonly IGraphService _graphService;
     private readonly ISharedItemRepository _repository;
+    private readonly SharedItemsViewModel _sharedItemsVm;
     private CancellationTokenSource? _cts;
 
     [ObservableProperty] private ScanStatus _scanStatus = ScanStatus.Idle;
@@ -24,10 +25,11 @@ public partial class ScanViewModel : ObservableObject
 
     public ObservableCollection<SharedItem> ScannedItems { get; } = new();
 
-    public ScanViewModel(IGraphService graphService, ISharedItemRepository repository)
+    public ScanViewModel(IGraphService graphService, ISharedItemRepository repository, SharedItemsViewModel sharedItemsVm)
     {
         _graphService = graphService;
         _repository = repository;
+        _sharedItemsVm = sharedItemsVm;
     }
 
     [RelayCommand]
@@ -51,10 +53,10 @@ public partial class ScanViewModel : ObservableObject
             FoundItemsCount = p.FoundItemsCount;
         });
 
+        var allItems = new List<SharedItem>();
         try
         {
             var users = await _graphService.GetAllUsersAsync(ExcludeGuests, _cts.Token);
-            var allItems = new List<SharedItem>();
 
             int processed = 0;
             int total = users.Count();
@@ -86,6 +88,7 @@ public partial class ScanViewModel : ObservableObject
             }
 
             await _repository.UpsertAsync(allItems);
+            await _sharedItemsVm.LoadAsync();
             ScanStatus = ScanStatus.Completed;
             ProgressMessage = $"スキャン完了: {allItems.Count} 件の共有アイテムを検出";
         }
@@ -93,6 +96,11 @@ public partial class ScanViewModel : ObservableObject
         {
             ScanStatus = ScanStatus.Cancelled;
             ProgressMessage = "スキャンがキャンセルされました";
+            if (allItems.Count > 0)
+            {
+                await _repository.UpsertAsync(allItems);
+                await _sharedItemsVm.LoadAsync();
+            }
         }
         catch (Exception ex)
         {
