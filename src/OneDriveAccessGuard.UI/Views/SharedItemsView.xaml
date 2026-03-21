@@ -36,36 +36,228 @@
             <TextBlock Text="{Binding StatusMessage}" FontSize="12" Foreground="#757575"/>
         </Border>
 
-        <!-- データグリッド -->
-        <DataGrid ItemsSource="{Binding DisplayItems}"
-                  SelectedItem="{Binding SelectedItem}"
-                  AutoGenerateColumns="False" IsReadOnly="True"
-                  CanUserAddRows="False" CanUserDeleteRows="False"
-                  GridLinesVisibility="Horizontal"
-                  HeadersVisibility="Column">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="ファイル名" Binding="{Binding Name}" Width="*"/>
-                <DataGridTextColumn Header="所有者" Binding="{Binding OwnerDisplayName}" Width="160"/>
-                <DataGridTextColumn Header="リスク" Binding="{Binding RiskLevel}" Width="80"/>
-                <DataGridTextColumn Header="共有種別"
-                                    Binding="{Binding Permissions[0].SharingType}" Width="120"/>
-                <DataGridTextColumn Header="最終更新" Width="140"
-                                    Binding="{Binding LastModified, StringFormat={}{0:yyyy/MM/dd HH:mm}}"/>
-                <DataGridTemplateColumn Header="操作" Width="100">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <Button Content="削除"
-                                    Command="{Binding DataContext.RevokePermissionsCommand,
-                                              RelativeSource={RelativeSource AncestorType=DataGrid}}"
-                                    CommandParameter="{Binding}"
-                                    Style="{StaticResource MaterialDesignOutlinedButton}"
-                                    BorderBrush="#C62828" Foreground="#C62828"
-                                    Padding="8,2" FontSize="11"/>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
-            </DataGrid.Columns>
-        </DataGrid>
+        <!-- メインコンテンツ（データグリッド + 詳細パネル） -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="400"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="320" MinWidth="200" MaxWidth="520"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- データグリッド -->
+            <DataGrid Grid.Column="0"
+                      ItemsSource="{Binding DisplayItems}"
+                      SelectedItem="{Binding SelectedItem}"
+                      AutoGenerateColumns="False" IsReadOnly="True"
+                      CanUserAddRows="False" CanUserDeleteRows="False"
+                      GridLinesVisibility="Horizontal"
+                      HeadersVisibility="Column">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="ファイル名" Binding="{Binding Name}" Width="*"/>
+                    <DataGridTextColumn Header="所有者" Binding="{Binding OwnerDisplayName}" Width="160"/>
+                    <DataGridTextColumn Header="リスク" Binding="{Binding RiskLevel}" Width="80"/>
+                    <DataGridTextColumn Header="共有種別"
+                                        Binding="{Binding Permissions[0].SharingType}" Width="120"/>
+                    <DataGridTextColumn Header="最終更新" Width="140"
+                                        Binding="{Binding LastModified, StringFormat={}{0:yyyy/MM/dd HH:mm}}"/>
+                    <DataGridTemplateColumn Header="操作" Width="100">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="削除"
+                                        Command="{Binding DataContext.RevokePermissionsCommand,
+                                                  RelativeSource={RelativeSource AncestorType=DataGrid}}"
+                                        CommandParameter="{Binding}"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        BorderBrush="#C62828" Foreground="#C62828"
+                                        Padding="8,2" FontSize="11"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- スプリッター -->
+            <GridSplitter Grid.Column="1"
+                          Width="5" HorizontalAlignment="Stretch"
+                          Background="#E0E0E0" ResizeBehavior="PreviousAndNext"/>
+
+            <!-- 詳細パネル -->
+            <Border Grid.Column="2" Background="White" BorderBrush="#E0E0E0" BorderThickness="0,0,0,0">
+                <Grid>
+                    <!-- 未選択時プレースホルダー -->
+                    <TextBlock Text="アイテムを選択してください"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="#BDBDBD" FontSize="13"
+                               Visibility="{Binding SelectedItem,
+                                   Converter={StaticResource NullToVisibilityConverter},
+                                   ConverterParameter=Inverse}"/>
+
+                    <!-- 選択時の詳細 -->
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  Visibility="{Binding SelectedItem,
+                                      Converter={StaticResource NullToVisibilityConverter}}">
+                        <StackPanel Margin="16" DataContext="{Binding SelectedItem}">
+
+                            <!-- ファイル名 -->
+                            <TextBlock Text="{Binding Name}"
+                                       FontSize="14" FontWeight="Bold"
+                                       TextWrapping="Wrap" Margin="0,0,0,8"/>
+
+                            <!-- リスクレベルバッジ -->
+                            <Border CornerRadius="3" Padding="8,3"
+                                    HorizontalAlignment="Left" Margin="0,0,0,16"
+                                    Background="{Binding RiskLevel,
+                                        Converter={StaticResource RiskLevelToBrushConverter}}">
+                                <TextBlock Text="{Binding RiskLevel}"
+                                           Foreground="White" FontSize="11" FontWeight="Medium"/>
+                            </Border>
+
+                            <!-- 基本情報 -->
+                            <TextBlock Text="基本情報"
+                                       FontWeight="Bold" FontSize="11"
+                                       Foreground="#9E9E9E" Margin="0,0,0,8"/>
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="64"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="所有者" FontSize="11" Foreground="#9E9E9E" Margin="0,0,0,6" VerticalAlignment="Top"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="種別"   FontSize="11" Foreground="#9E9E9E" Margin="0,0,0,6"/>
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="サイズ" FontSize="11" Foreground="#9E9E9E" Margin="0,0,0,6"/>
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="作成日" FontSize="11" Foreground="#9E9E9E" Margin="0,0,0,6"/>
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="更新日" FontSize="11" Foreground="#9E9E9E" Margin="0,0,0,6"/>
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="検出日" FontSize="11" Foreground="#9E9E9E" Margin="0,0,0,0"/>
+
+                                <!-- 所有者 -->
+                                <StackPanel Grid.Row="0" Grid.Column="1" Margin="0,0,0,6">
+                                    <TextBlock Text="{Binding OwnerDisplayName}" FontSize="12" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding OwnerEmail}" FontSize="11" Foreground="#757575" TextWrapping="Wrap"/>
+                                </StackPanel>
+
+                                <!-- 種別 -->
+                                <TextBlock Grid.Row="1" Grid.Column="1" FontSize="12" Margin="0,0,0,6">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="ファイル"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsFolder}" Value="True">
+                                                    <Setter Property="Text" Value="フォルダ"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+
+                                <!-- サイズ -->
+                                <TextBlock Grid.Row="2" Grid.Column="1"
+                                           Text="{Binding SizeBytes, Converter={StaticResource FileSizeConverter}}"
+                                           FontSize="12" Margin="0,0,0,6"/>
+
+                                <!-- 作成日 -->
+                                <TextBlock Grid.Row="3" Grid.Column="1"
+                                           Text="{Binding CreatedDateTime, StringFormat={}{0:yyyy/MM/dd HH:mm}}"
+                                           FontSize="12" Margin="0,0,0,6"/>
+
+                                <!-- 最終更新 -->
+                                <TextBlock Grid.Row="4" Grid.Column="1"
+                                           Text="{Binding LastModified, StringFormat={}{0:yyyy/MM/dd HH:mm}}"
+                                           FontSize="12" Margin="0,0,0,6"/>
+
+                                <!-- 検出日時 -->
+                                <TextBlock Grid.Row="5" Grid.Column="1"
+                                           Text="{Binding DetectedAt, StringFormat={}{0:yyyy/MM/dd HH:mm}}"
+                                           FontSize="12"/>
+                            </Grid>
+
+                            <!-- WebUrl -->
+                            <TextBlock Text="OneDrive URL"
+                                       FontWeight="Bold" FontSize="11"
+                                       Foreground="#9E9E9E" Margin="0,0,0,6"/>
+                            <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,0,0,16">
+                                <Hyperlink NavigateUri="{Binding WebUrl}"
+                                           RequestNavigate="Hyperlink_RequestNavigate">
+                                    <Run Text="{Binding WebUrl, Mode=OneWay}"/>
+                                </Hyperlink>
+                            </TextBlock>
+
+                            <!-- 共有権限一覧 -->
+                            <TextBlock Text="共有権限"
+                                       FontWeight="Bold" FontSize="11"
+                                       Foreground="#9E9E9E" Margin="0,0,0,8"/>
+                            <ItemsControl ItemsSource="{Binding Permissions}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border Margin="0,0,0,8" Padding="10,8"
+                                                CornerRadius="4"
+                                                BorderBrush="#E0E0E0" BorderThickness="1">
+                                            <StackPanel>
+                                                <!-- 共有タイプ -->
+                                                <Border CornerRadius="2" Padding="6,2"
+                                                        HorizontalAlignment="Left" Margin="0,0,0,6"
+                                                        Background="{Binding SharingType,
+                                                            Converter={StaticResource SharingTypeToBrushConverter}}">
+                                                    <TextBlock Text="{Binding SharingType}"
+                                                               Foreground="White" FontSize="11"/>
+                                                </Border>
+
+                                                <!-- 共有リンク -->
+                                                <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,0,0,4"
+                                                           Visibility="{Binding ShareLink,
+                                                               Converter={StaticResource NullToVisibilityConverter}}">
+                                                    <Hyperlink NavigateUri="{Binding ShareLink}"
+                                                               RequestNavigate="Hyperlink_RequestNavigate">
+                                                        <Run Text="{Binding ShareLink, Mode=OneWay}"/>
+                                                    </Hyperlink>
+                                                </TextBlock>
+
+                                                <!-- 付与対象 -->
+                                                <TextBlock FontSize="11" Foreground="#616161" Margin="0,0,0,2"
+                                                           Visibility="{Binding GrantedToDisplayName,
+                                                               Converter={StaticResource NullToVisibilityConverter}}">
+                                                    <Run Text="付与先: "/>
+                                                    <Run Text="{Binding GrantedToDisplayName, Mode=OneWay}"/>
+                                                </TextBlock>
+                                                <TextBlock FontSize="11" Foreground="#757575" Margin="0,0,0,2"
+                                                           Visibility="{Binding GrantedToEmail,
+                                                               Converter={StaticResource NullToVisibilityConverter}}">
+                                                    <Run Text="{Binding GrantedToEmail, Mode=OneWay}"/>
+                                                </TextBlock>
+
+                                                <!-- ロール・有効期限・パスワード -->
+                                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                    <TextBlock Text="{Binding Roles}"
+                                                               FontSize="11" Foreground="#9E9E9E" Margin="0,0,8,0"/>
+                                                    <TextBlock FontSize="11" Foreground="#9E9E9E" Margin="0,0,8,0"
+                                                               Visibility="{Binding ExpirationDateTime,
+                                                                   Converter={StaticResource NullToVisibilityConverter}}">
+                                                        <Run Text="期限: "/>
+                                                        <Run Text="{Binding ExpirationDateTime,
+                                                                   StringFormat={}{0:yyyy/MM/dd}, Mode=OneWay}"/>
+                                                    </TextBlock>
+                                                    <TextBlock Text="PW有" FontSize="11" Foreground="#EF6C00"
+                                                               Visibility="{Binding HasPassword,
+                                                                   Converter={StaticResource BooleanToVisibilityConverter}}"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
 
     </DockPanel>
 </UserControl>

@@ -1,6 +1,8 @@
 using OneDriveAccessGuard.UI.ViewModels;
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Navigation;
 
 namespace OneDriveAccessGuard.UI.Views;
 
@@ -15,5 +17,11 @@ public partial class SharedItemsView : UserControl
     {
         if (DataContext is SharedItemsViewModel vm)
             await vm.LoadCommand.ExecuteAsync(null);
+    }
+
+    private void Hyperlink_RequestNavigate(object sender, RequestNavigateEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        e.Handled = true;
     }
 }

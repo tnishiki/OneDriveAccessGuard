@@ -16,6 +16,10 @@
             <!-- コンバーター -->
             <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
             <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+            <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+            <converters:FileSizeConverter x:Key="FileSizeConverter"/>
+            <converters:RiskLevelToBrushConverter x:Key="RiskLevelToBrushConverter"/>
+            <converters:SharingTypeToBrushConverter x:Key="SharingTypeToBrushConverter"/>
 
             <!-- リスクレベル色定義 -->
             <SolidColorBrush x:Key="RiskHighBrush"   Color="#C62828"/>
