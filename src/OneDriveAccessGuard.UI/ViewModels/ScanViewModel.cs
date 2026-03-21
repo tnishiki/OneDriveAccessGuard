@@ -23,8 +23,6 @@ public partial class ScanViewModel : ObservableObject
     [ObservableProperty] private bool _excludeGuests = true;
     [ObservableProperty] private string _scanLog = string.Empty;
     [ObservableProperty] private bool _showLatestLog;
-    [ObservableProperty] private string _accountFilter = string.Empty;
-
     public ObservableCollection<SharedItem> ScannedItems { get; } = new();
 
     public ScanViewModel(IGraphService graphService, ISharedItemRepository repository, SharedItemsViewModel sharedItemsVm)
@@ -60,8 +58,7 @@ public partial class ScanViewModel : ObservableObject
         var allItems = new List<SharedItem>();
         try
         {
-            var accountFilter = string.IsNullOrWhiteSpace(AccountFilter) ? null : AccountFilter.Trim();
-            var users = await _graphService.GetAllUsersAsync(ExcludeGuests, accountFilter, _cts.Token);
+            var users = await _graphService.GetAllUsersAsync(ExcludeGuests, _cts.Token);
             int processed = 0;
             int total = users.Count();
             var allItemsBag = new System.Collections.Concurrent.ConcurrentBag<SharedItem>();

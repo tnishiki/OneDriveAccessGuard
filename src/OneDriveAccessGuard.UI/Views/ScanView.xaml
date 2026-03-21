@@ -6,7 +6,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="120"/>
+            <RowDefinition Height="130"/>
         </Grid.RowDefinitions>
 
         <!-- 上部コントロールエリア -->
@@ -28,43 +28,53 @@
                 <TextBlock Text="{Binding FoundItemsCount}" FontSize="24" FontWeight="Bold"
                            Foreground="#1565C0" VerticalAlignment="Center"/>
             </StackPanel>
-
-            <!-- オプション -->
-            <CheckBox Content="ゲストアカウントは除く"
+        </StackPanel>
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="200"/>
+                <ColumnDefinition/>
+            </Grid.ColumnDefinitions>
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition/>
+                </Grid.RowDefinitions>
+                <!-- オプション -->
+                <CheckBox Content="ゲストアカウントは除く"
                       IsChecked="{Binding ExcludeGuests}"
                       IsEnabled="{Binding CanCancel, Converter={StaticResource InverseBooleanConverter}}"
                       Margin="0,0,0,12" FontSize="14"/>
-
-            <!-- アカウント名フィルター -->
-            <TextBox Text="{Binding AccountFilter, UpdateSourceTrigger=PropertyChanged}"
-                     IsEnabled="{Binding CanCancel, Converter={StaticResource InverseBooleanConverter}}"
-                     materialDesign:HintAssist.Hint="アカウント名（空白の場合は全ユーザーを対象）"
-                     materialDesign:HintAssist.IsFloating="True"
-                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                     Width="360" HorizontalAlignment="Left"
-                     Margin="0,0,0,16" FontSize="14"/>
-
-            <!-- ボタン -->
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                <Button Content="スキャン開始"
+                <DataGrid 
+                    Grid.Row="1" ItemsSource="{Binding Users}" Margin="3">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="ユーザ名" Binding="{Binding DisplayName}"/>
+                        <DataGridTextColumn Header="メールアドレス" Binding="{Binding Mail}"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,16" Grid.Row="0">
+                    <!-- ボタン -->
+                    <Button Content="スキャン開始"
                         Command="{Binding StartScanCommand}"
                         Style="{StaticResource MaterialDesignRaisedButton}"
                         Background="#1565C0" Foreground="White"
                         Padding="24,8" Margin="0,0,12,0"/>
 
-                <Button Content="キャンセル"
+                    <Button Content="キャンセル"
                         Command="{Binding CancelScanCommand}"
                         IsEnabled="{Binding CanCancel}"
                         Style="{StaticResource MaterialDesignOutlinedButton}"
                         Padding="24,8"/>
-            </StackPanel>
-
-        </StackPanel>
-
-        <!-- 検出アイテム一覧 -->
-        <DataGrid Grid.Row="1"
-                  ItemsSource="{Binding ScannedItems}"
-                  AutoGenerateColumns="False"
+                </StackPanel>
+                <!-- 検出アイテム一覧 -->
+                <DataGrid Grid.Row="1"
+                          ItemsSource="{Binding ScannedItems}"
+                          AutoGenerateColumns="False"
                   IsReadOnly="True"
                   CanUserSortColumns="True"
                   CanUserResizeColumns="True"
@@ -74,22 +84,21 @@
                   VerticalScrollBarVisibility="Auto"
                   HorizontalScrollBarVisibility="Auto"
                   materialDesign:DataGridAssist.CellPadding="8 4 8 4"
-                  materialDesign:DataGridAssist.ColumnHeaderPadding="8 4 8 4">
-
-            <DataGrid.Columns>
-
-                <DataGridTextColumn Header="オーナー名"
+                  materialDesign:DataGridAssist.ColumnHeaderPadding="8 4 8 4"
+                          MinHeight="300">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="オーナー名"
                                     Binding="{Binding OwnerDisplayName}"
                                     Width="160"/>
 
-                <DataGridTextColumn Header="ファイル名"
+                        <DataGridTextColumn Header="ファイル名"
                                     Binding="{Binding Name}"
                                     Width="200"/>
 
-                <DataGridTemplateColumn Header="リンク URL" Width="280">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <TextBlock>
+                        <DataGridTemplateColumn Header="リンク URL" Width="280">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock>
                                 <Hyperlink NavigateUri="{Binding WebUrl}"
                                            RequestNavigate="Hyperlink_RequestNavigate">
                                     <TextBlock Text="{Binding WebUrl}"
@@ -97,20 +106,22 @@
                                                MaxWidth="260"/>
                                 </Hyperlink>
                             </TextBlock>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
 
-                <DataGridTextColumn Header="作成日"
+                        <DataGridTextColumn Header="作成日"
                                     Binding="{Binding CreatedDateTime, StringFormat={}{0:yyyy/MM/dd}}"
                                     Width="100"/>
 
-                <DataGridTextColumn Header="更新日"
+                        <DataGridTextColumn Header="更新日"
                                     Binding="{Binding LastModified, StringFormat={}{0:yyyy/MM/dd}}"
                                     Width="100"/>
 
-            </DataGrid.Columns>
-        </DataGrid>
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Grid>
+        </Grid>
         <Grid Grid.Row="2">
             <CheckBox Content="最新を表示"
                       IsChecked="{Binding ShowLatestLog}"

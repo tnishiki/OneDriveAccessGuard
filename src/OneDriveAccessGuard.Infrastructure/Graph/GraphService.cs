@@ -89,7 +89,6 @@ public class GraphService : IGraphService
     /// <inheritdoc/>
     public async Task<IEnumerable<OrgUser>> GetAllUsersAsync(
         bool excludeGuests = false,
-        string? accountFilter = null,
         CancellationToken ct = default)
     {
         var users = new List<OrgUser>();
@@ -100,33 +99,12 @@ public class GraphService : IGraphService
                 ? "accountEnabled eq true and userType eq 'Member'"
                 : "accountEnabled eq true";
 
-            var hasAccountFilter = !string.IsNullOrWhiteSpace(accountFilter);
-
-            GraphModels.UserCollectionResponse? response;
-
-            if (hasAccountFilter)
+            var response = await Client.Users.GetAsync(config =>
             {
-                // $search で displayName / mail の部分一致検索（ConsistencyLevel: eventual が必須）
-                // $filter と $search は同時使用可能（$count=true も必要）
-                response = await Client.Users.GetAsync(config =>
-                {
-                    config.QueryParameters.Select = ["id", "displayName", "mail", "department", "jobTitle", "accountEnabled"];
-                    config.QueryParameters.Top    = 999;
-                    config.QueryParameters.Search = $"\"displayName:{accountFilter}\" OR \"mail:{accountFilter}\"";
-                    config.QueryParameters.Filter = odataFilter;
-                    config.QueryParameters.Count  = true;
-                    config.Headers.Add("ConsistencyLevel", "eventual");
-                }, ct);
-            }
-            else
-            {
-                response = await Client.Users.GetAsync(config =>
-                {
-                    config.QueryParameters.Select = ["id", "displayName", "mail", "department", "jobTitle", "accountEnabled"];
-                    config.QueryParameters.Top    = 999;
-                    config.QueryParameters.Filter = odataFilter;
-                }, ct);
-            }
+                config.QueryParameters.Select = ["id", "displayName", "mail", "department", "jobTitle", "accountEnabled"];
+                config.QueryParameters.Top    = 999;
+                config.QueryParameters.Filter = odataFilter;
+            }, ct);
 
             var pageIterator = PageIterator<GraphModels.User, GraphModels.UserCollectionResponse>.CreatePageIterator(
                 Client,
