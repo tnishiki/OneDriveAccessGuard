@@ -24,4 +24,10 @@ public partial class SharedItemsView : UserControl
         Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
         e.Handled = true;
     }
+
+    private void CopyUrlButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button btn && btn.Tag is string url && !string.IsNullOrEmpty(url))
+            Clipboard.SetText(url);
+    }
 }

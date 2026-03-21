@@ -1,18 +1,17 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using OneDriveAccessGuard.Core.Interfaces;
 using OneDriveAccessGuard.Core.Models;
 using OneDriveAccessGuard.Core.Enums;
-using DocumentFormat.OpenXml.Drawing.Charts;
 
 namespace OneDriveAccessGuard.UI.ViewModels;
 
 public partial class ScanViewModel : ObservableObject
 {
     private readonly IGraphService _graphService;
-    private readonly ISharedItemRepository _repository;
-    private readonly IUserScanResultRepository _userScanResultRepository;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly SharedItemsViewModel _sharedItemsVm;
     private CancellationTokenSource? _cts;
 
@@ -31,11 +30,10 @@ public partial class ScanViewModel : ObservableObject
 
     private readonly List<OrgUser> _allUsers = new();
 
-    public ScanViewModel(IGraphService graphService, ISharedItemRepository repository, IUserScanResultRepository userScanResultRepository, SharedItemsViewModel sharedItemsVm)
+    public ScanViewModel(IGraphService graphService, IServiceScopeFactory scopeFactory, SharedItemsViewModel sharedItemsVm)
     {
         _graphService = graphService;
-        _repository = repository;
-        _userScanResultRepository = userScanResultRepository;
+        _scopeFactory = scopeFactory;
         _sharedItemsVm = sharedItemsVm;
         _ = RefreshUsersAsync();
     }
@@ -94,7 +92,11 @@ public partial class ScanViewModel : ObservableObject
                     orgUser.LastCheckDate = scanDate;
                 }
                 scannedOwnerIds.Add(user.Id);
-                await _userScanResultRepository.UpsertAsync(user.Id, itemList.Count, totalFileCount, scanDate);
+                using (var scope = _scopeFactory.CreateScope())
+                {
+                    var userScanResultRepository = scope.ServiceProvider.GetRequiredService<IUserScanResultRepository>();
+                    await userScanResultRepository.UpsertAsync(user.Id, itemList.Count, totalFileCount, scanDate);
+                }
                 ((IProgress<ScanProgress>)progress).Report(new ScanProgress
                 {
                     ProcessedUsers = ++processed,
@@ -104,7 +106,11 @@ public partial class ScanViewModel : ObservableObject
                 });
             }
 
-            await _repository.UpsertAsync(allItems, scannedOwnerIds);
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var repository = scope.ServiceProvider.GetRequiredService<ISharedItemRepository>();
+                await repository.UpsertAsync(allItems, scannedOwnerIds);
+            }
             await _sharedItemsVm.LoadAsync();
             ScanStatus = ScanStatus.Completed;
             ProgressMessage = $"スキャン完了: {allItems.Count} 件の共有アイテムを検出";
@@ -115,7 +121,9 @@ public partial class ScanViewModel : ObservableObject
             ProgressMessage = "スキャンがキャンセルされました";
             if (allItems.Count > 0)
             {
-                await _repository.UpsertAsync(allItems, scannedOwnerIds);
+                using var scope = _scopeFactory.CreateScope();
+                var repository = scope.ServiceProvider.GetRequiredService<ISharedItemRepository>();
+                await repository.UpsertAsync(allItems, scannedOwnerIds);
                 await _sharedItemsVm.LoadAsync();
             }
         }
@@ -143,7 +151,9 @@ public partial class ScanViewModel : ObservableObject
         try
         {
             var users = await _graphService.GetAllUsersAsync(ExcludeGuests);
-            var scanResults = (await _userScanResultRepository.GetAllAsync())
+            using var scope = _scopeFactory.CreateScope();
+            var userScanResultRepository = scope.ServiceProvider.GetRequiredService<IUserScanResultRepository>();
+            var scanResults = (await userScanResultRepository.GetAllAsync())
                 .ToDictionary(r => r.UserId);
 
             foreach (var user in users)
