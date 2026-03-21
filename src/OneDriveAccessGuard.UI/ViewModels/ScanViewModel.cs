@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.Input;
 using OneDriveAccessGuard.Core.Interfaces;
 using OneDriveAccessGuard.Core.Models;
 using OneDriveAccessGuard.Core.Enums;
+using DocumentFormat.OpenXml.Drawing.Charts;
 
 namespace OneDriveAccessGuard.UI.ViewModels;
 
@@ -61,9 +62,6 @@ public partial class ScanViewModel : ObservableObject
         {
             var accountFilter = string.IsNullOrWhiteSpace(AccountFilter) ? null : AccountFilter.Trim();
             var users = await _graphService.GetAllUsersAsync(ExcludeGuests, accountFilter, _cts.Token);
-
-            var allItems = new List<SharedItem>();
-
             int processed = 0;
             int total = users.Count();
             var allItemsBag = new System.Collections.Concurrent.ConcurrentBag<SharedItem>();
@@ -76,7 +74,7 @@ public partial class ScanViewModel : ObservableObject
                 {
                     _cts.Token.ThrowIfCancellationRequested();
                     var items = await _graphService.GetSharedItemsAsync(
-                        user.Id, progress, _cts.Token);
+                        user.Id,user.DisplayName , progress, _cts.Token);
                     foreach (var item in items)
                     {
                         item.OwnerDisplayName = user.DisplayName;
