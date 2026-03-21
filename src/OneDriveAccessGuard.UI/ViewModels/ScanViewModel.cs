@@ -40,6 +40,7 @@ public partial class ScanViewModel : ObservableObject
         _cts = new CancellationTokenSource();
         ScanStatus = ScanStatus.Running;
         CanCancel = true;
+        _sharedItemsVm.IsScanRunning = true;
         FoundItemsCount = 0;
         ScanLog = string.Empty;
         ScannedItems.Clear();
@@ -110,6 +111,7 @@ public partial class ScanViewModel : ObservableObject
         finally
         {
             CanCancel = false;
+            _sharedItemsVm.IsScanRunning = false;
         }
     }
 
