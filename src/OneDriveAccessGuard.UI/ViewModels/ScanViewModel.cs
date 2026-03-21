@@ -22,6 +22,7 @@ public partial class ScanViewModel : ObservableObject
     [ObservableProperty] private bool _excludeGuests = true;
     [ObservableProperty] private string _scanLog = string.Empty;
     [ObservableProperty] private bool _showLatestLog;
+    [ObservableProperty] private string _accountFilter = string.Empty;
 
     public ObservableCollection<SharedItem> ScannedItems { get; } = new();
 
@@ -46,7 +47,8 @@ public partial class ScanViewModel : ObservableObject
         ScannedItems.Clear();
 
         _graphService.LogCallback = msg => ScanLog += msg + Environment.NewLine;
-
+        var uiContext = SynchronizationContext.Current!;
+        
         var progress = new Progress<ScanProgress>(p =>
         {
             ProgressPercent = p.ProgressPercent;
@@ -57,36 +59,50 @@ public partial class ScanViewModel : ObservableObject
         var allItems = new List<SharedItem>();
         try
         {
-            var users = await _graphService.GetAllUsersAsync(ExcludeGuests, _cts.Token);
+            var accountFilter = string.IsNullOrWhiteSpace(AccountFilter) ? null : AccountFilter.Trim();
+            var users = await _graphService.GetAllUsersAsync(ExcludeGuests, accountFilter, _cts.Token);
+
+            var allItems = new List<SharedItem>();
 
             int processed = 0;
             int total = users.Count();
+            var allItemsBag = new System.Collections.Concurrent.ConcurrentBag<SharedItem>();
+            var semaphore = new SemaphoreSlim(5); // 同時5ユーザーまで
 
-            foreach (var user in users)
+            var userTasks = users.Select(async user =>
             {
-                _cts.Token.ThrowIfCancellationRequested();
-
-                var items = await _graphService.GetSharedItemsAsync(
-                    user.Id,user.DisplayName, progress, _cts.Token);
-
-                foreach (var item in items)
+                await semaphore.WaitAsync(_cts.Token);
+                try
                 {
-                    item.OwnerDisplayName = user.DisplayName;
-                    item.OwnerEmail = user.Email;
-                    ScannedItems.Add(item);
+                    _cts.Token.ThrowIfCancellationRequested();
+                    var items = await _graphService.GetSharedItemsAsync(
+                        user.Id, progress, _cts.Token);
+                    foreach (var item in items)
+                    {
+                        item.OwnerDisplayName = user.DisplayName;
+                        item.OwnerEmail = user.Email;
+                        allItemsBag.Add(item);
+                        uiContext.Post(_ => ScannedItems.Add(item), null);
+                    }
+                    var count = Interlocked.Increment(ref processed);
+                    ((IProgress<ScanProgress>)progress).Report(new ScanProgress
+                    {
+                        ProcessedUsers = count,
+                        TotalUsers = total,
+                        CurrentUserName = user.DisplayName,
+                        FoundItemsCount = allItemsBag.Count
+                    });
                 }
-
-                allItems.AddRange(items);
-                processed++;
-
-                ((IProgress<ScanProgress>)progress).Report(new ScanProgress
+                finally
                 {
-                    ProcessedUsers = processed,
-                    TotalUsers = total,
-                    CurrentUserName = user.DisplayName,
-                    FoundItemsCount = allItems.Count
-                });
-            }
+                    semaphore.Release();
+                }
+            });
+
+            await Task.WhenAll(userTasks);
+
+            // ConcurrentBag → List に変換
+            allItems.AddRange(allItemsBag);
 
             await _repository.UpsertAsync(allItems);
             await _sharedItemsVm.LoadAsync();
@@ -102,6 +118,11 @@ public partial class ScanViewModel : ObservableObject
                 await _repository.UpsertAsync(allItems);
                 await _sharedItemsVm.LoadAsync();
             }
+        }
+        catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException))
+        {
+            ScanStatus = ScanStatus.Cancelled;
+            ProgressMessage = "スキャンがキャンセルされました";
         }
         catch (Exception ex)
         {
