@@ -136,13 +136,13 @@
             <!-- コンテンツ領域（ページ切替） -->
             <Grid Grid.Row="1">
                 <views:DashboardView DataContext="{Binding DashboardVm}"
-                                     Visibility="{Binding CurrentPageKey, Converter={StaticResource PageKeyToVisibilityConverter}, ConverterParameter=dashboard}"/>
+                                     Visibility="{Binding DataContext.CurrentPageKey, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource PageKeyToVisibilityConverter}, ConverterParameter=dashboard}"/>
                 <views:ScanView DataContext="{Binding ScanVm}"
-                                Visibility="{Binding CurrentPageKey, Converter={StaticResource PageKeyToVisibilityConverter}, ConverterParameter=scan}"/>
+                                Visibility="{Binding DataContext.CurrentPageKey, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource PageKeyToVisibilityConverter}, ConverterParameter=scan}"/>
                 <views:SharedItemsView DataContext="{Binding SharedItemsVm}"
-                                       Visibility="{Binding CurrentPageKey, Converter={StaticResource PageKeyToVisibilityConverter}, ConverterParameter=files}"/>
+                                       Visibility="{Binding DataContext.CurrentPageKey, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource PageKeyToVisibilityConverter}, ConverterParameter=files}"/>
                 <views:SettingsView DataContext="{Binding SettingsVm}"
-                                    Visibility="{Binding CurrentPageKey, Converter={StaticResource PageKeyToVisibilityConverter}, ConverterParameter=settings}"/>
+                                    Visibility="{Binding DataContext.CurrentPageKey, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource PageKeyToVisibilityConverter}, ConverterParameter=settings}"/>
             </Grid>
         </Grid>
     </Grid>

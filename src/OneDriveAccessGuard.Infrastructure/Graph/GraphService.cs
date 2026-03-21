@@ -164,7 +164,7 @@ public class GraphService : IGraphService
                 _driveIdCache[userId] = driveId;
             }
 
-            totalFileCount = await ScanDriveWithDeltaAsync(userId, DisplayName, driveId, sharedItems, ct);
+            totalFileCount = await ScanDriveWithDeltaAsync(userId, DisplayName, driveId, sharedItems, ct, progress);
         }
         catch (Exception ex)
         {
@@ -184,7 +184,8 @@ public class GraphService : IGraphService
         string DisplayName,
         string driveId,
         List<SharedItem> results,
-        CancellationToken ct)
+        CancellationToken ct,
+        IProgress<ScanProgress>? progress = null)
     {
         // Phase 1: delta で候補収集（変更なし）
         var candidates = new List<GraphModels.DriveItem>();
@@ -236,9 +237,19 @@ public class GraphService : IGraphService
         if (candidates.Count == 0) return totalItemCount;
 
         // Phase 2: Permissions API で正確な共有状態を確認する
+        int checkedCount = 0;
         foreach (var item in candidates)
         {
             ct.ThrowIfCancellationRequested();
+            if (checkedCount % 10 == 0)
+            {
+                progress?.Report(new ScanProgress
+                {
+                    ItemsChecked = checkedCount,
+                    TotalItemsToCheck = candidates.Count
+                });
+            }
+            checkedCount++;
             try
             {
                 var permissions = await GetPermissionsAsync(driveId, item.Id!, item.Name!, ct);

@@ -20,6 +20,8 @@ public partial class ScanViewModel : ObservableObject
     [ObservableProperty] private string _progressMessage = "スキャン待機中";
     [ObservableProperty] private int _foundItemsCount;
     [ObservableProperty] private bool _canCancel;
+    [ObservableProperty] private string _itemsCheckedMessage = string.Empty;
+    [ObservableProperty] private double _itemsCheckedPercent;
     [ObservableProperty] private bool _excludeGuests = true;
     [ObservableProperty] private string _scanLog = string.Empty;
     [ObservableProperty] private bool _showLatestLog;
@@ -56,8 +58,12 @@ public partial class ScanViewModel : ObservableObject
         var progress = new Progress<ScanProgress>(p =>
         {
             ProgressPercent = p.ProgressPercent;
-            ProgressMessage = $"スキャン中: {p.CurrentUserName} ({p.ProcessedUsers}/{p.TotalUsers})";
             FoundItemsCount = p.FoundItemsCount;
+            if (p.TotalItemsToCheck > 0)
+            {
+                ItemsCheckedMessage = $"権限確認中: {p.ItemsChecked}/{p.TotalItemsToCheck}";
+                ItemsCheckedPercent = p.ItemsCheckedPercent;
+            }
         });
 
         var allItems = new List<SharedItem>();
@@ -73,6 +79,9 @@ public partial class ScanViewModel : ObservableObject
             foreach (var user in users)
             {
                 _cts.Token.ThrowIfCancellationRequested();
+                ProgressMessage = $"スキャン中: {user.DisplayName} ({processed + 1}/{total})";
+                ItemsCheckedMessage = string.Empty;
+                ItemsCheckedPercent = 0;
                 var (items, totalFileCount) = await _graphService.GetSharedItemsAsync(
                     user.Id, user.DisplayName, progress, _cts.Token);
                 var itemList = items.ToList();

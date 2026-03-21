@@ -123,7 +123,12 @@ public class ScanProgress
     public int TotalUsers { get; set; }
     public string CurrentUserName { get; set; } = string.Empty;
     public int FoundItemsCount { get; set; }
+    public int ItemsChecked { get; set; }
+    public int TotalItemsToCheck { get; set; }
 
     public double ProgressPercent =>
         TotalUsers == 0 ? 0 : (double)ProcessedUsers / TotalUsers * 100;
+
+    public double ItemsCheckedPercent =>
+        TotalItemsToCheck == 0 ? 0 : (double)ItemsChecked / TotalItemsToCheck * 100;
 }
