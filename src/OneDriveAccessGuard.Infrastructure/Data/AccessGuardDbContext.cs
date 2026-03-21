@@ -11,6 +11,7 @@ public class AccessGuardDbContext : DbContext
     public DbSet<SharedItemEntity> SharedItems => Set<SharedItemEntity>();
     public DbSet<ScanSessionEntity> ScanSessions => Set<ScanSessionEntity>();
     public DbSet<AuditLogEntity> AuditLogs => Set<AuditLogEntity>();
+    public DbSet<UserScanResultEntity> UserScanResults => Set<UserScanResultEntity>();
 
     public AccessGuardDbContext(DbContextOptions<AccessGuardDbContext> options)
         : base(options) { }
@@ -36,6 +37,11 @@ public class AccessGuardDbContext : DbContext
             b.HasKey(e => e.Id);
             b.HasIndex(e => e.ExecutedAt);
         });
+
+        modelBuilder.Entity<UserScanResultEntity>(b =>
+        {
+            b.HasKey(e => e.UserId);
+        });
     }
 }
 
@@ -53,6 +59,7 @@ public class SharedItemEntity
     public bool IsFolder { get; set; }
     public RiskLevel RiskLevel { get; set; }
     public string PermissionsJson { get; set; } = "[]"; // JSON serialized
+    public int? Latest { get; set; }
 }
 
 public class ScanSessionEntity
@@ -67,6 +74,14 @@ public class ScanSessionEntity
     public int MediumRiskCount { get; set; }
     public int LowRiskCount { get; set; }
     public string? ErrorMessage { get; set; }
+}
+
+public class UserScanResultEntity
+{
+    public string UserId { get; set; } = string.Empty;
+    public int RiskFiles { get; set; }
+    public int AllFiles { get; set; }
+    public DateTime LastCheckDate { get; set; }
 }
 
 public class AuditLogEntity

@@ -43,7 +43,42 @@ public partial class App : Application
         // DBマイグレーション
         using var scope = _host.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AccessGuardDbContext>();
-        await db.Database.EnsureCreatedAsync();
+
+        // EnsureCreatedAsync で作成された既存 DB にはマイグレーション履歴がないため、
+        // SharedItems テーブルが存在するのに履歴がない場合は InitialCreate を適用済みとしてマークする
+        var hasMigrationHistory = (await db.Database.ExecuteSqlRawAsync(
+            "CREATE TABLE IF NOT EXISTS \"__EFMigrationsHistory\" " +
+            "(\"MigrationId\" TEXT NOT NULL CONSTRAINT \"PK___EFMigrationsHistory\" PRIMARY KEY, " +
+            "\"ProductVersion\" TEXT NOT NULL)")) >= 0;
+
+        var alreadyMarked = await db.Database
+            .SqlQueryRaw<int>("SELECT COUNT(*) AS \"Value\" FROM \"__EFMigrationsHistory\" WHERE \"MigrationId\" = '20260321114810_InitialCreate'")
+            .FirstAsync();
+
+        if (alreadyMarked == 0)
+        {
+            var tablesExist = await db.Database
+                .SqlQueryRaw<int>("SELECT COUNT(*) AS \"Value\" FROM sqlite_master WHERE type='table' AND name='SharedItems'")
+                .FirstAsync();
+
+            if (tablesExist > 0)
+            {
+                await db.Database.ExecuteSqlRawAsync(
+                    "INSERT INTO \"__EFMigrationsHistory\" (\"MigrationId\", \"ProductVersion\") " +
+                    "VALUES ('20260321114810_InitialCreate', '9.0.0')");
+            }
+        }
+
+        await db.Database.MigrateAsync();
+
+        // EnsureCreatedAsync 時代の既存 DB には UserScanResults テーブルが存在しないため、
+        // マイグレーション後も存在しない場合は手動で作成する
+        await db.Database.ExecuteSqlRawAsync(
+            "CREATE TABLE IF NOT EXISTS \"UserScanResults\" (" +
+            "\"UserId\" TEXT NOT NULL CONSTRAINT \"PK_UserScanResults\" PRIMARY KEY, " +
+            "\"RiskFiles\" INTEGER NOT NULL, " +
+            "\"AllFiles\" INTEGER NOT NULL, " +
+            "\"LastCheckDate\" TEXT NOT NULL)");
 
         // メインウィンドウ表示
         var mainWindow = _host.Services.GetRequiredService<MainWindow>();
@@ -74,11 +109,12 @@ public partial class App : Application
         // ★ リポジトリの登録
         services.AddTransient<ISharedItemRepository, SharedItemRepository>();
         services.AddTransient<IAuditLogRepository, AuditLogRepository>();
+        services.AddTransient<IUserScanResultRepository, UserScanResultRepository>();
         // ViewModels
         services.AddTransient<MainViewModel>();
         services.AddTransient<DashboardViewModel>();
-        services.AddTransient<ScanViewModel>();
-        services.AddTransient<SharedItemsViewModel>();
+        services.AddSingleton<ScanViewModel>();
+        services.AddSingleton<SharedItemsViewModel>();
         services.AddTransient<SettingsViewModel>();
 
         // Views

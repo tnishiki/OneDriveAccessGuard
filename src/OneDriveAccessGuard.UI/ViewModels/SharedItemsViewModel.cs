@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using OneDriveAccessGuard.Core.Interfaces;
 using OneDriveAccessGuard.Core.Models;
 using OneDriveAccessGuard.Core.Enums;
@@ -10,8 +11,7 @@ namespace OneDriveAccessGuard.UI.ViewModels;
 public partial class SharedItemsViewModel : ObservableObject
 {
     private readonly IGraphService _graphService;
-    private readonly ISharedItemRepository _repository;
-    private readonly IAuditLogRepository _auditLogRepository;
+    private readonly IServiceScopeFactory _scopeFactory;
     private List<SharedItem> _allItems = [];
 
     [ObservableProperty] private ObservableCollection<SharedItem> _displayItems = [];
@@ -31,14 +31,10 @@ public partial class SharedItemsViewModel : ObservableObject
 
     [ObservableProperty] private string _statusMessage = string.Empty;
 
-    public SharedItemsViewModel(
-        IGraphService graphService,
-        ISharedItemRepository repository,
-        IAuditLogRepository auditLogRepository)
+    public SharedItemsViewModel(IGraphService graphService, IServiceScopeFactory scopeFactory)
     {
         _graphService = graphService;
-        _repository = repository;
-        _auditLogRepository = auditLogRepository;
+        _scopeFactory = scopeFactory;
     }
 
     [RelayCommand]
@@ -47,7 +43,9 @@ public partial class SharedItemsViewModel : ObservableObject
         IsLoading = true;
         try
         {
-            _allItems = (await _repository.GetAllAsync()).ToList();
+            using var scope = _scopeFactory.CreateScope();
+            var repository = scope.ServiceProvider.GetRequiredService<ISharedItemRepository>();
+            _allItems = (await repository.GetAllAsync()).ToList();
             ApplyFilter();
             StatusMessage = $"{_allItems.Count} 件のアイテムを読み込みました";
         }
@@ -82,12 +80,16 @@ public partial class SharedItemsViewModel : ObservableObject
         IsLoading = true;
         try
         {
+            using var scope = _scopeFactory.CreateScope();
+            var repository = scope.ServiceProvider.GetRequiredService<ISharedItemRepository>();
+            var auditLogRepository = scope.ServiceProvider.GetRequiredService<IAuditLogRepository>();
+
             foreach (var perm in item.Permissions.ToList())
             {
                 var success = await _graphService.RemovePermissionAsync(
                     item.OwnerId, item.Id, perm.Id);
 
-                await _auditLogRepository.AddAsync(new AuditLog
+                await auditLogRepository.AddAsync(new AuditLog
                 {
                     ExecutedAt = DateTime.UtcNow,
                     ExecutedBy = Environment.UserName,
@@ -101,7 +103,7 @@ public partial class SharedItemsViewModel : ObservableObject
                 });
             }
 
-            await _repository.DeleteAsync(item.Id);
+            await repository.DeleteAsync(item.Id);
             _allItems.Remove(item);
             ApplyFilter();
             StatusMessage = $"「{item.Name}」の共有を削除しました";

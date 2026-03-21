@@ -1,17 +1,17 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using OneDriveAccessGuard.Core.Interfaces;
 using OneDriveAccessGuard.Core.Models;
 using OneDriveAccessGuard.Core.Enums;
-using DocumentFormat.OpenXml.Drawing.Charts;
 
 namespace OneDriveAccessGuard.UI.ViewModels;
 
 public partial class ScanViewModel : ObservableObject
 {
     private readonly IGraphService _graphService;
-    private readonly ISharedItemRepository _repository;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly SharedItemsViewModel _sharedItemsVm;
     private CancellationTokenSource? _cts;
 
@@ -20,16 +20,24 @@ public partial class ScanViewModel : ObservableObject
     [ObservableProperty] private string _progressMessage = "スキャン待機中";
     [ObservableProperty] private int _foundItemsCount;
     [ObservableProperty] private bool _canCancel;
+    [ObservableProperty] private string _itemsCheckedMessage = string.Empty;
+    [ObservableProperty] private double _itemsCheckedPercent;
     [ObservableProperty] private bool _excludeGuests = true;
     [ObservableProperty] private string _scanLog = string.Empty;
     [ObservableProperty] private bool _showLatestLog;
+    [ObservableProperty] private string _filterKeyword = string.Empty;
     public ObservableCollection<SharedItem> ScannedItems { get; } = new();
+    public ObservableCollection<OrgUser> Users { get; } = new();
+    public List<OrgUser> SelectedUsers { get; } = new();
 
-    public ScanViewModel(IGraphService graphService, ISharedItemRepository repository, SharedItemsViewModel sharedItemsVm)
+    private readonly List<OrgUser> _allUsers = new();
+
+    public ScanViewModel(IGraphService graphService, IServiceScopeFactory scopeFactory, SharedItemsViewModel sharedItemsVm)
     {
         _graphService = graphService;
-        _repository = repository;
+        _scopeFactory = scopeFactory;
         _sharedItemsVm = sharedItemsVm;
+        _ = RefreshUsersAsync();
     }
 
     [RelayCommand]
@@ -46,60 +54,72 @@ public partial class ScanViewModel : ObservableObject
         ScannedItems.Clear();
 
         _graphService.LogCallback = msg => ScanLog += msg + Environment.NewLine;
-        var uiContext = SynchronizationContext.Current!;
-        
+
         var progress = new Progress<ScanProgress>(p =>
         {
             ProgressPercent = p.ProgressPercent;
-            ProgressMessage = $"スキャン中: {p.CurrentUserName} ({p.ProcessedUsers}/{p.TotalUsers})";
             FoundItemsCount = p.FoundItemsCount;
+            if (p.TotalItemsToCheck > 0)
+            {
+                ItemsCheckedMessage = $"権限確認中: {p.ItemsChecked}/{p.TotalItemsToCheck}";
+                ItemsCheckedPercent = p.ItemsCheckedPercent;
+            }
         });
 
         var allItems = new List<SharedItem>();
+        var scannedOwnerIds = new List<string>();
         try
         {
-            var users = await _graphService.GetAllUsersAsync(ExcludeGuests, _cts.Token);
+            var users = SelectedUsers.Count > 0
+                ? (IEnumerable<OrgUser>)SelectedUsers
+                : await _graphService.GetAllUsersAsync(ExcludeGuests, _cts.Token);
             int processed = 0;
             int total = users.Count();
-            var allItemsBag = new System.Collections.Concurrent.ConcurrentBag<SharedItem>();
-            var semaphore = new SemaphoreSlim(5); // 同時5ユーザーまで
 
-            var userTasks = users.Select(async user =>
+            foreach (var user in users)
             {
-                await semaphore.WaitAsync(_cts.Token);
-                try
+                _cts.Token.ThrowIfCancellationRequested();
+                ProgressMessage = $"スキャン中: {user.DisplayName} ({processed + 1}/{total})";
+                ItemsCheckedMessage = string.Empty;
+                ItemsCheckedPercent = 0;
+                var (items, totalFileCount) = await _graphService.GetSharedItemsAsync(
+                    user.Id, user.DisplayName, progress, _cts.Token);
+                var itemList = items.ToList();
+                foreach (var item in itemList)
                 {
-                    _cts.Token.ThrowIfCancellationRequested();
-                    var items = await _graphService.GetSharedItemsAsync(
-                        user.Id,user.DisplayName , progress, _cts.Token);
-                    foreach (var item in items)
-                    {
-                        item.OwnerDisplayName = user.DisplayName;
-                        item.OwnerEmail = user.Email;
-                        allItemsBag.Add(item);
-                        uiContext.Post(_ => ScannedItems.Add(item), null);
-                    }
-                    var count = Interlocked.Increment(ref processed);
-                    ((IProgress<ScanProgress>)progress).Report(new ScanProgress
-                    {
-                        ProcessedUsers = count,
-                        TotalUsers = total,
-                        CurrentUserName = user.DisplayName,
-                        FoundItemsCount = allItemsBag.Count
-                    });
+                    item.OwnerDisplayName = user.DisplayName;
+                    item.OwnerEmail = user.Email;
+                    allItems.Add(item);
+                    ScannedItems.Add(item);
                 }
-                finally
+                var scanDate = DateTime.Now;
+                var orgUser = Users.FirstOrDefault(u => u.Id == user.Id);
+                if (orgUser != null)
                 {
-                    semaphore.Release();
+                    orgUser.RiskFiles = itemList.Count;
+                    orgUser.AllFiles = totalFileCount;
+                    orgUser.LastCheckDate = scanDate;
                 }
-            });
+                scannedOwnerIds.Add(user.Id);
+                using (var scope = _scopeFactory.CreateScope())
+                {
+                    var userScanResultRepository = scope.ServiceProvider.GetRequiredService<IUserScanResultRepository>();
+                    await userScanResultRepository.UpsertAsync(user.Id, itemList.Count, totalFileCount, scanDate);
+                }
+                ((IProgress<ScanProgress>)progress).Report(new ScanProgress
+                {
+                    ProcessedUsers = ++processed,
+                    TotalUsers = total,
+                    CurrentUserName = user.DisplayName,
+                    FoundItemsCount = allItems.Count
+                });
+            }
 
-            await Task.WhenAll(userTasks);
-
-            // ConcurrentBag → List に変換
-            allItems.AddRange(allItemsBag);
-
-            await _repository.UpsertAsync(allItems);
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var repository = scope.ServiceProvider.GetRequiredService<ISharedItemRepository>();
+                await repository.UpsertAsync(allItems, scannedOwnerIds);
+            }
             await _sharedItemsVm.LoadAsync();
             ScanStatus = ScanStatus.Completed;
             ProgressMessage = $"スキャン完了: {allItems.Count} 件の共有アイテムを検出";
@@ -110,14 +130,11 @@ public partial class ScanViewModel : ObservableObject
             ProgressMessage = "スキャンがキャンセルされました";
             if (allItems.Count > 0)
             {
-                await _repository.UpsertAsync(allItems);
+                using var scope = _scopeFactory.CreateScope();
+                var repository = scope.ServiceProvider.GetRequiredService<ISharedItemRepository>();
+                await repository.UpsertAsync(allItems, scannedOwnerIds);
                 await _sharedItemsVm.LoadAsync();
             }
-        }
-        catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException))
-        {
-            ScanStatus = ScanStatus.Cancelled;
-            ProgressMessage = "スキャンがキャンセルされました";
         }
         catch (Exception ex)
         {
@@ -135,5 +152,56 @@ public partial class ScanViewModel : ObservableObject
     private void CancelScan()
     {
         _cts?.Cancel();
+    }
+
+    [RelayCommand]
+    public async Task RefreshUsersAsync()
+    {
+        try
+        {
+            var users = await _graphService.GetAllUsersAsync(ExcludeGuests);
+            using var scope = _scopeFactory.CreateScope();
+            var userScanResultRepository = scope.ServiceProvider.GetRequiredService<IUserScanResultRepository>();
+            var scanResults = (await userScanResultRepository.GetAllAsync())
+                .ToDictionary(r => r.UserId);
+
+            foreach (var user in users)
+            {
+                if (scanResults.TryGetValue(user.Id, out var result))
+                {
+                    user.RiskFiles = result.RiskFiles;
+                    user.AllFiles = result.AllFiles;
+                    user.LastCheckDate = result.LastCheckDate;
+                }
+            }
+
+            _allUsers.Clear();
+            _allUsers.AddRange(users);
+            ApplyFilter();
+        }
+        catch (Exception ex)
+        {
+            ScanLog += $"[ERROR] ユーザ情報の取得に失敗しました: {ex.Message}{Environment.NewLine}";
+        }
+    }
+
+    [RelayCommand]
+    private void Filter()
+    {
+        ApplyFilter();
+    }
+
+    private void ApplyFilter()
+    {
+        var keyword = FilterKeyword.Trim();
+        var filtered = string.IsNullOrEmpty(keyword)
+            ? _allUsers
+            : _allUsers.Where(u =>
+                u.DisplayName.Contains(keyword, StringComparison.OrdinalIgnoreCase) ||
+                u.Email.Contains(keyword, StringComparison.OrdinalIgnoreCase)).ToList();
+
+        Users.Clear();
+        foreach (var user in filtered)
+            Users.Add(user);
     }
 }

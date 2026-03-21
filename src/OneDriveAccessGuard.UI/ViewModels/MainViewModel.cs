@@ -20,10 +20,15 @@ public partial class MainViewModel : ObservableObject
     private string _currentPageTitle = "ダッシュボード";
 
     [ObservableProperty]
-    private ObservableObject? _currentPage;
+    private string _currentPageKey = "dashboard";
 
     [ObservableProperty]
     private NavItem? _selectedNavItem;
+
+    public DashboardViewModel DashboardVm => _dashboardVm;
+    public ScanViewModel ScanVm => _scanVm;
+    public SharedItemsViewModel SharedItemsVm => _sharedItemsVm;
+    public SettingsViewModel SettingsVm => _settingsVm;
 
     public List<NavItem> NavigationItems { get; } =
     [
@@ -61,14 +66,7 @@ public partial class MainViewModel : ObservableObject
         if (value == null) return;
 
         CurrentPageTitle = value.Label;
-        CurrentPage = value.Key switch
-        {
-            "dashboard" => _dashboardVm,
-            "scan"      => _scanVm,
-            "files"     => _sharedItemsVm,
-            "settings"  => _settingsVm,
-            _           => _dashboardVm
-        };
+        CurrentPageKey = value.Key;
     }
 
 }

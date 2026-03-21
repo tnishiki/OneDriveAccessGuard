@@ -182,12 +182,21 @@
                             <TextBlock Text="OneDrive URL"
                                        FontWeight="Bold" FontSize="11"
                                        Foreground="#9E9E9E" Margin="0,0,0,6"/>
-                            <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,0,0,16">
-                                <Hyperlink NavigateUri="{Binding WebUrl}"
-                                           RequestNavigate="Hyperlink_RequestNavigate">
-                                    <Run Text="{Binding WebUrl, Mode=OneWay}"/>
-                                </Hyperlink>
-                            </TextBlock>
+                            <DockPanel Margin="0,0,0,16">
+                                <Button DockPanel.Dock="Right"
+                                        Content="コピー"
+                                        Tag="{Binding WebUrl}"
+                                        Click="CopyUrlButton_Click"
+                                        Style="{StaticResource MaterialDesignOutlinedButton}"
+                                        Padding="8,2" FontSize="11"
+                                        VerticalAlignment="Top"/>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Margin="0,0,8,0">
+                                    <Hyperlink NavigateUri="{Binding WebUrl}"
+                                               RequestNavigate="Hyperlink_RequestNavigate">
+                                        <Run Text="{Binding WebUrl, Mode=OneWay}"/>
+                                    </Hyperlink>
+                                </TextBlock>
+                            </DockPanel>
 
                             <!-- 共有権限一覧 -->
                             <TextBlock Text="共有権限"

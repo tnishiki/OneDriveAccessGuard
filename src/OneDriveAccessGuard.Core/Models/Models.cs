@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
 using OneDriveAccessGuard.Core.Enums;
 
 namespace OneDriveAccessGuard.Core.Models;
@@ -20,6 +22,7 @@ public class SharedItem
     public bool IsFolder { get; set; }
     public RiskLevel RiskLevel { get; set; }
     public List<SharePermission> Permissions { get; set; } = new();
+    public int? Latest { get; set; }
 }
 
 /// <summary>
@@ -40,7 +43,7 @@ public class SharePermission
 /// <summary>
 /// 組織内ユーザー情報
 /// </summary>
-public class OrgUser
+public class OrgUser : INotifyPropertyChanged
 {
     public string Id { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
@@ -48,6 +51,32 @@ public class OrgUser
     public string? Department { get; set; }
     public string? JobTitle { get; set; }
     public bool IsEnabled { get; set; }
+
+    private int _riskFiles;
+    private int _allFiles;
+    private DateTime? _lastCheckDate;
+
+    public int RiskFiles
+    {
+        get => _riskFiles;
+        set { _riskFiles = value; OnPropertyChanged(); }
+    }
+
+    public int AllFiles
+    {
+        get => _allFiles;
+        set { _allFiles = value; OnPropertyChanged(); }
+    }
+
+    public DateTime? LastCheckDate
+    {
+        get => _lastCheckDate;
+        set { _lastCheckDate = value; OnPropertyChanged(); }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+    private void OnPropertyChanged([CallerMemberName] string? name = null)
+        => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
 /// <summary>
@@ -94,7 +123,12 @@ public class ScanProgress
     public int TotalUsers { get; set; }
     public string CurrentUserName { get; set; } = string.Empty;
     public int FoundItemsCount { get; set; }
+    public int ItemsChecked { get; set; }
+    public int TotalItemsToCheck { get; set; }
 
     public double ProgressPercent =>
         TotalUsers == 0 ? 0 : (double)ProcessedUsers / TotalUsers * 100;
+
+    public double ItemsCheckedPercent =>
+        TotalItemsToCheck == 0 ? 0 : (double)ItemsChecked / TotalItemsToCheck * 100;
 }

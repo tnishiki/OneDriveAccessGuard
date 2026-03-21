@@ -28,8 +28,8 @@ public interface IGraphService
     /// <param name="excludeGuests">true のとき ゲストアカウント (userType=Guest) を除外する</param>
     Task<IEnumerable<OrgUser>> GetAllUsersAsync(bool excludeGuests = false, CancellationToken ct = default);
 
-    /// <summary>指定ユーザーのOneDrive上の共有アイテムを取得する</summary>
-    Task<IEnumerable<SharedItem>> GetSharedItemsAsync(string userId, string DisplayName, IProgress<ScanProgress>? progress = null, CancellationToken ct = default);
+    /// <summary>指定ユーザーのOneDrive上の共有アイテムを取得する。戻り値は (共有アイテム一覧, ドライブ内全ファイル数) のタプル。</summary>
+    Task<(IEnumerable<SharedItem> Items, int TotalFileCount)> GetSharedItemsAsync(string userId, string DisplayName, IProgress<ScanProgress>? progress = null, CancellationToken ct = default);
 
     /// <summary>指定ファイルの共有アクセス許可を削除する（非公開化）</summary>
     Task<bool> RemovePermissionAsync(string userId, string itemId, string permissionId, CancellationToken ct = default);
@@ -61,7 +61,7 @@ public interface IScanService
 /// </summary>
 public interface ISharedItemRepository
 {
-    Task UpsertAsync(IEnumerable<SharedItem> items);
+    Task UpsertAsync(IEnumerable<SharedItem> items, IEnumerable<string> scannedOwnerIds);
     Task<IEnumerable<SharedItem>> GetAllAsync();
     Task<IEnumerable<SharedItem>> GetByRiskLevelAsync(Core.Enums.RiskLevel minLevel);
     Task<SharedItem?> GetByIdAsync(string id);
@@ -77,6 +77,16 @@ public interface IAuditLogRepository
     Task AddAsync(AuditLog log);
     Task<IEnumerable<AuditLog>> GetRecentAsync(int count = 100);
     Task<IEnumerable<AuditLog>> GetByDateRangeAsync(DateTime from, DateTime to);
+}
+
+/// <summary>
+/// ユーザースキャン結果のリポジトリインターフェース
+/// </summary>
+public interface IUserScanResultRepository
+{
+    Task UpsertAsync(string userId, int riskFiles, int allFiles, DateTime lastCheckDate);
+    Task<IEnumerable<(string UserId, int RiskFiles, int AllFiles, DateTime LastCheckDate)>> GetAllAsync();
+    Task<IEnumerable<DateTime>> GetRecentScanDatesAsync(int count = 10);
 }
 
 /// <summary>

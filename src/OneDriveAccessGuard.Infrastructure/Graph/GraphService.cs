@@ -102,7 +102,7 @@ public class GraphService : IGraphService
             var response = await Client.Users.GetAsync(config =>
             {
                 config.QueryParameters.Select = ["id", "displayName", "mail", "department", "jobTitle", "accountEnabled"];
-                config.QueryParameters.Top    = 999;
+                config.QueryParameters.Top = 999;
                 config.QueryParameters.Filter = odataFilter;
             }, ct);
 
@@ -139,69 +139,53 @@ public class GraphService : IGraphService
 
     // ─── 共有アイテムスキャン ────────────────────────────────────────
 
-    private async Task<string?> GetDriveIdAsync(string userId, CancellationToken ct)
-    {
-        if (_driveIdCache.TryGetValue(userId, out var cached))
-            return cached;
-
-        try
-        {
-            var drive = await Client.Users[userId].Drive.GetAsync(cancellationToken: ct);
-            if (drive?.Id != null)
-            {
-                _driveIdCache[userId] = drive.Id;
-                return drive.Id;
-            }
-        }
-        catch (ServiceException ex)
-        {
-            _logger.LogWarning(ex, "ユーザー {UserId} のドライブ取得に失敗しました", userId);
-            Callback($"[WARN] ユーザー {userId} のドライブ取得に失敗しました: {ex.Message}");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "ユーザー {UserId} のドライブ取得に失敗しました", userId);
-            Callback($"[WARN] ユーザー {userId} のドライブ取得に失敗しました: {ex.Message}");
-        }
-
-        return null;
-    }
-
     /// <inheritdoc/>
-    public async Task<IEnumerable<SharedItem>> GetSharedItemsAsync(
+    public async Task<(IEnumerable<SharedItem> Items, int TotalFileCount)> GetSharedItemsAsync(
         string userId,
         string DisplayName,
         IProgress<ScanProgress>? progress = null,
         CancellationToken ct = default)
     {
         var sharedItems = new List<SharedItem>();
+        int totalFileCount = 0;
 
         try
         {
-            var driveId = await GetDriveIdAsync(userId, ct);
-            if (driveId == null) return sharedItems;
+            if (!_driveIdCache.TryGetValue(userId, out var driveId))
+            {
+                var drive = await Client.Users[userId].Drive.GetAsync(cancellationToken: ct);
+                if (drive?.Id == null)
+                {
+                    _logger.LogWarning("ユーザー {DisplayName} のドライブが見つかりません", DisplayName);
+                    Callback($"[WARN] ユーザー {DisplayName} のドライブが見つかりません");
+                    return (sharedItems, totalFileCount);
+                }
+                driveId = drive.Id;
+                _driveIdCache[userId] = driveId;
+            }
 
-            await ScanDriveWithDeltaAsync(userId, DisplayName, driveId, sharedItems, ct);
+            totalFileCount = await ScanDriveWithDeltaAsync(userId, DisplayName, driveId, sharedItems, ct, progress);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, $"ユーザー {DisplayName} のスキャン中にエラーが発生しました");
+            _logger.LogWarning(ex, "ユーザー {DisplayName} のスキャン中にエラーが発生しました", DisplayName);
             Callback($"[WARN] ユーザー {DisplayName} のスキャン中にエラーが発生しました: {ex.Message}");
         }
 
-        return sharedItems;
+        return (sharedItems, totalFileCount);
     }
 
     /// <summary>
     /// /delta API でドライブ内の全アイテムをフラットに取得し、共有アイテムを抽出する。
     /// 再帰的フォルダ走査と異なり、1 回のページング処理で全階層を網羅できる。
     /// </summary>
-    private async Task ScanDriveWithDeltaAsync(
+    private async Task<int> ScanDriveWithDeltaAsync(
         string userId,
         string DisplayName,
         string driveId,
         List<SharedItem> results,
-        CancellationToken ct)
+        CancellationToken ct,
+        IProgress<ScanProgress>? progress = null)
     {
         // Phase 1: delta で候補収集（変更なし）
         var candidates = new List<GraphModels.DriveItem>();
@@ -229,10 +213,7 @@ public class GraphService : IGraphService
                     // shared が存在する全アイテムを候補とし、正確な判定は Permissions API で行う
                     if (item.Shared != null)
                     {
-                        if (item.Shared?.Scope == "anonymous" && item.Id != null)
-                        {
-                            candidates.Add(item);  // ← ここでScope絞り込みも同時に行う
-                        }
+                        candidates.Add(item);
                     }
                 }
 
@@ -247,22 +228,28 @@ public class GraphService : IGraphService
         {
             _logger.LogWarning($"ユーザー {DisplayName} のドライブが見つかりません");
             Callback($"[WARN] ユーザー {DisplayName} のドライブが見つかりません");
-            return;
+            return 0;
         }
 
         _logger.LogDebug($"ユーザー {DisplayName}: {candidates.Count} 件の共有候補を検出 (全 {totalItemCount} ファイル)");
         Callback($"ユーザー {DisplayName}: {candidates.Count} 件の共有候補を検出 (全 {totalItemCount} ファイル)");
 
-        if (candidates.Count == 0) return;
+        if (candidates.Count == 0) return totalItemCount;
 
-        // Phase 2: Permissions APIを並列取得（同時3件でThrottling回避）
-        // Delta API の shared フィールドは不正確なため、ここで正確な共有状態を確認する
-        var semaphore = new SemaphoreSlim(3);
-        var localResults = new System.Collections.Concurrent.ConcurrentBag<SharedItem>();
-
-        var tasks = candidates.Select(async item =>
+        // Phase 2: Permissions API で正確な共有状態を確認する
+        int checkedCount = 0;
+        foreach (var item in candidates)
         {
-            await semaphore.WaitAsync(ct);
+            ct.ThrowIfCancellationRequested();
+            if (checkedCount % 10 == 0)
+            {
+                progress?.Report(new ScanProgress
+                {
+                    ItemsChecked = checkedCount,
+                    TotalItemsToCheck = candidates.Count
+                });
+            }
+            checkedCount++;
             try
             {
                 var permissions = await GetPermissionsAsync(driveId, item.Id!, item.Name!, ct);
@@ -272,7 +259,7 @@ public class GraphService : IGraphService
                     var webUrl = permissions.FirstOrDefault(p => p.ShareLink != null)?.ShareLink
                                  ?? item.WebUrl
                                  ?? string.Empty;
-                    localResults.Add(new SharedItem
+                    results.Add(new SharedItem
                     {
                         Id = item.Id ?? string.Empty,
                         Name = item.Name ?? string.Empty,
@@ -290,22 +277,14 @@ public class GraphService : IGraphService
             }
             catch (ServiceException ex) when (ex.ResponseStatusCode == 429)
             {
-                // Throttling発生時はリトライ
                 var retryAfter = ex.ResponseHeaders?
                     .TryGetValues("Retry-After", out var vals) == true
                     ? int.Parse(vals.First()) : 10;
                 await Task.Delay(TimeSpan.FromSeconds(retryAfter), ct);
             }
-            finally
-            {
-                semaphore.Release();
-            }
-        });
+        }
 
-        await Task.WhenAll(tasks);
-
-        foreach (var item in localResults)
-            results.Add(item);
+        return totalItemCount;
     }
     private async Task<List<SharePermission>> GetPermissionsAsync(
         string driveId, string itemId, string Name, CancellationToken ct)
@@ -351,8 +330,13 @@ public class GraphService : IGraphService
     {
         try
         {
-            var driveId = await GetDriveIdAsync(userId, ct);
-            if (driveId == null) return false;
+            if (!_driveIdCache.TryGetValue(userId, out var driveId))
+            {
+                var drive = await Client.Users[userId].Drive.GetAsync(cancellationToken: ct);
+                if (drive?.Id == null) return false;
+                driveId = drive.Id;
+                _driveIdCache[userId] = driveId;
+            }
 
             await Client.Drives[driveId].Items[itemId].Permissions[permissionId]
                 .DeleteAsync(cancellationToken: ct);

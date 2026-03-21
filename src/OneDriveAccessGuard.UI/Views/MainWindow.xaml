@@ -4,6 +4,7 @@
         xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         xmlns:vm="clr-namespace:OneDriveAccessGuard.UI.ViewModels"
         xmlns:views="clr-namespace:OneDriveAccessGuard.UI.Views"
+        xmlns:conv="clr-namespace:OneDriveAccessGuard.UI.Converters"
         Title="OneDrive AccessGuard"
         Height="720" Width="1280"
         MinHeight="600" MinWidth="960"
@@ -13,23 +14,12 @@
         TextElement.FontFamily="{materialDesign:MaterialDesignFont}">
 
     <Window.Resources>
-        <DataTemplate DataType="{x:Type vm:DashboardViewModel}">
-            <views:DashboardView/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:ScanViewModel}">
-            <views:ScanView/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:SharedItemsViewModel}">
-            <views:SharedItemsView/>
-        </DataTemplate>
-        <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
-            <views:SettingsView/>
-        </DataTemplate>
+        <conv:PageKeyToVisibilityConverter x:Key="PageKeyToVisibilityConverter"/>
     </Window.Resources>
 
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="220"/>
+            <ColumnDefinition Width="180"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
@@ -144,9 +134,16 @@
             </Border>
 
             <!-- コンテンツ領域（ページ切替） -->
-            <ContentControl Grid.Row="1"
-                            Content="{Binding CurrentPage}"
-                            Margin="0"/>
+            <Grid Grid.Row="1">
+                <views:DashboardView DataContext="{Binding DashboardVm}"
+                                     Visibility="{Binding DataContext.CurrentPageKey, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource PageKeyToVisibilityConverter}, ConverterParameter=dashboard}"/>
+                <views:ScanView DataContext="{Binding ScanVm}"
+                                Visibility="{Binding DataContext.CurrentPageKey, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource PageKeyToVisibilityConverter}, ConverterParameter=scan}"/>
+                <views:SharedItemsView DataContext="{Binding SharedItemsVm}"
+                                       Visibility="{Binding DataContext.CurrentPageKey, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource PageKeyToVisibilityConverter}, ConverterParameter=files}"/>
+                <views:SettingsView DataContext="{Binding SettingsVm}"
+                                    Visibility="{Binding DataContext.CurrentPageKey, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource PageKeyToVisibilityConverter}, ConverterParameter=settings}"/>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

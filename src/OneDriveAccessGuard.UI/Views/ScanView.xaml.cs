@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Windows.Controls;
 using System.Windows.Navigation;
+using OneDriveAccessGuard.Core.Models;
 using OneDriveAccessGuard.UI.ViewModels;
 
 namespace OneDriveAccessGuard.UI.Views;
@@ -25,6 +26,14 @@ public partial class ScanView : UserControl
         if (e.PropertyName != nameof(ScanViewModel.ScanLog)) return;
         if (sender is ScanViewModel vm && vm.ShowLatestLog)
             LogTextBox.ScrollToEnd();
+    }
+
+    private void UsersDataGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is not ScanViewModel vm) return;
+        vm.SelectedUsers.Clear();
+        foreach (var item in UsersDataGrid.SelectedItems.OfType<OrgUser>())
+            vm.SelectedUsers.Add(item);
     }
 
     private void Hyperlink_RequestNavigate(object sender, RequestNavigateEventArgs e)
