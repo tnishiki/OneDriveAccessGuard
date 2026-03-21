@@ -16,7 +16,7 @@
                          Style="{StaticResource MaterialDesignOutlinedTextBox}"
                          Width="280" Margin="0,0,16,0"/>
 
-                <Button Content="一括削除（高リスク）"
+                <Button Content="一括非公開（高リスク）"
                         Command="{Binding RevokeAllHighRiskCommand}"
                         Style="{StaticResource MaterialDesignOutlinedButton}"
                         BorderBrush="#C62828" Foreground="#C62828"
@@ -63,7 +63,7 @@
                     <DataGridTemplateColumn Header="操作" Width="100">
                         <DataGridTemplateColumn.CellTemplate>
                             <DataTemplate>
-                                <Button Content="削除"
+                                <Button Content="共有解除"
                                         Command="{Binding DataContext.RevokePermissionsCommand,
                                                   RelativeSource={RelativeSource AncestorType=DataGrid}}"
                                         CommandParameter="{Binding}"
