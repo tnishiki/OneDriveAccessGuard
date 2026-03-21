@@ -24,6 +24,8 @@ public partial class ScanViewModel : ObservableObject
     [ObservableProperty] private string _scanLog = string.Empty;
     [ObservableProperty] private bool _showLatestLog;
     public ObservableCollection<SharedItem> ScannedItems { get; } = new();
+    public ObservableCollection<OrgUser> Users { get; } = new();
+    public List<OrgUser> SelectedUsers { get; } = new();
 
     public ScanViewModel(IGraphService graphService, ISharedItemRepository repository, SharedItemsViewModel sharedItemsVm)
     {
@@ -58,7 +60,9 @@ public partial class ScanViewModel : ObservableObject
         var allItems = new List<SharedItem>();
         try
         {
-            var users = await _graphService.GetAllUsersAsync(ExcludeGuests, _cts.Token);
+            var users = SelectedUsers.Count > 0
+                ? (IEnumerable<OrgUser>)SelectedUsers
+                : await _graphService.GetAllUsersAsync(ExcludeGuests, _cts.Token);
             int processed = 0;
             int total = users.Count();
             var allItemsBag = new System.Collections.Concurrent.ConcurrentBag<SharedItem>();
@@ -135,5 +139,21 @@ public partial class ScanViewModel : ObservableObject
     private void CancelScan()
     {
         _cts?.Cancel();
+    }
+
+    [RelayCommand]
+    public async Task RefreshUsersAsync()
+    {
+        try
+        {
+            var users = await _graphService.GetAllUsersAsync(ExcludeGuests);
+            Users.Clear();
+            foreach (var user in users)
+                Users.Add(user);
+        }
+        catch (Exception ex)
+        {
+            ScanLog += $"[ERROR] ユーザ情報の取得に失敗しました: {ex.Message}{Environment.NewLine}";
+        }
     }
 }
