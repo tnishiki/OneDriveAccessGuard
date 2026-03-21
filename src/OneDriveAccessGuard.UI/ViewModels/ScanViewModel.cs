@@ -63,6 +63,7 @@ public partial class ScanViewModel : ObservableObject
         });
 
         var allItems = new List<SharedItem>();
+        var scannedOwnerIds = new List<string>();
         try
         {
             var users = SelectedUsers.Count > 0
@@ -92,6 +93,7 @@ public partial class ScanViewModel : ObservableObject
                     orgUser.AllFiles = totalFileCount;
                     orgUser.LastCheckDate = scanDate;
                 }
+                scannedOwnerIds.Add(user.Id);
                 await _userScanResultRepository.UpsertAsync(user.Id, itemList.Count, totalFileCount, scanDate);
                 ((IProgress<ScanProgress>)progress).Report(new ScanProgress
                 {
@@ -102,7 +104,7 @@ public partial class ScanViewModel : ObservableObject
                 });
             }
 
-            await _repository.UpsertAsync(allItems);
+            await _repository.UpsertAsync(allItems, scannedOwnerIds);
             await _sharedItemsVm.LoadAsync();
             ScanStatus = ScanStatus.Completed;
             ProgressMessage = $"スキャン完了: {allItems.Count} 件の共有アイテムを検出";
@@ -113,7 +115,7 @@ public partial class ScanViewModel : ObservableObject
             ProgressMessage = "スキャンがキャンセルされました";
             if (allItems.Count > 0)
             {
-                await _repository.UpsertAsync(allItems);
+                await _repository.UpsertAsync(allItems, scannedOwnerIds);
                 await _sharedItemsVm.LoadAsync();
             }
         }

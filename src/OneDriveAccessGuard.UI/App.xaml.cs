@@ -114,7 +114,7 @@ public partial class App : Application
         services.AddTransient<MainViewModel>();
         services.AddTransient<DashboardViewModel>();
         services.AddTransient<ScanViewModel>();
-        services.AddTransient<SharedItemsViewModel>();
+        services.AddSingleton<SharedItemsViewModel>();
         services.AddTransient<SettingsViewModel>();
 
         // Views

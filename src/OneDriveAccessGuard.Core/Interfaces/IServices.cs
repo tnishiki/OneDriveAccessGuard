@@ -61,7 +61,7 @@ public interface IScanService
 /// </summary>
 public interface ISharedItemRepository
 {
-    Task UpsertAsync(IEnumerable<SharedItem> items);
+    Task UpsertAsync(IEnumerable<SharedItem> items, IEnumerable<string> scannedOwnerIds);
     Task<IEnumerable<SharedItem>> GetAllAsync();
     Task<IEnumerable<SharedItem>> GetByRiskLevelAsync(Core.Enums.RiskLevel minLevel);
     Task<SharedItem?> GetByIdAsync(string id);

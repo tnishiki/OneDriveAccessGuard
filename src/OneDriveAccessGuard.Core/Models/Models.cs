@@ -22,6 +22,7 @@ public class SharedItem
     public bool IsFolder { get; set; }
     public RiskLevel RiskLevel { get; set; }
     public List<SharePermission> Permissions { get; set; } = new();
+    public int? Latest { get; set; }
 }
 
 /// <summary>

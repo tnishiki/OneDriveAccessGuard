@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using OneDriveAccessGuard.Infrastructure.Data;
 
@@ -10,9 +11,11 @@ using OneDriveAccessGuard.Infrastructure.Data;
 namespace OneDriveAccessGuard.Infrastructure.Migrations
 {
     [DbContext(typeof(AccessGuardDbContext))]
-    partial class AccessGuardDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260321134005_AddLatestToSharedItems")]
+    partial class AddLatestToSharedItems
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.0");

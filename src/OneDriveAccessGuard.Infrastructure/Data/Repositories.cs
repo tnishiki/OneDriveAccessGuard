@@ -12,10 +12,20 @@ public class SharedItemRepository : ISharedItemRepository
 
     public SharedItemRepository(AccessGuardDbContext db) => _db = db;
 
-    public async Task UpsertAsync(IEnumerable<SharedItem> items)
+    public async Task UpsertAsync(IEnumerable<SharedItem> items, IEnumerable<string> scannedOwnerIds)
     {
+        // スキャン対象ユーザーの既存アイテムの Latest をすべて null にリセット
+        var ownerIdList = scannedOwnerIds.ToList();
+        var existingItems = await _db.SharedItems
+            .Where(e => ownerIdList.Contains(e.OwnerId) && e.Latest == 1)
+            .ToListAsync();
+        foreach (var e in existingItems)
+            e.Latest = null;
+
+        // 新規スキャン結果を Latest = 1 でアップサート
         foreach (var item in items)
         {
+            item.Latest = 1;
             var entity = ToEntity(item);
             var existing = await _db.SharedItems.FindAsync(entity.Id);
             if (existing == null)
@@ -35,6 +45,7 @@ public class SharedItemRepository : ISharedItemRepository
                 existing.IsFolder = entity.IsFolder;
                 existing.RiskLevel = entity.RiskLevel;
                 existing.PermissionsJson = entity.PermissionsJson;
+                existing.Latest = 1;
             }
         }
         await _db.SaveChangesAsync();
@@ -42,7 +53,7 @@ public class SharedItemRepository : ISharedItemRepository
 
     public async Task<IEnumerable<SharedItem>> GetAllAsync()
     {
-        var entities = await _db.SharedItems.ToListAsync();
+        var entities = await _db.SharedItems.Where(e => e.Latest == 1).ToListAsync();
         return entities.Select(ToDomain);
     }
 
@@ -85,7 +96,8 @@ public class SharedItemRepository : ISharedItemRepository
         DetectedAt = item.DetectedAt,
         IsFolder = item.IsFolder,
         RiskLevel = item.RiskLevel,
-        PermissionsJson = JsonSerializer.Serialize(item.Permissions)
+        PermissionsJson = JsonSerializer.Serialize(item.Permissions),
+        Latest = item.Latest
     };
 
     private static SharedItem ToDomain(SharedItemEntity e) => new()
@@ -101,7 +113,8 @@ public class SharedItemRepository : ISharedItemRepository
         DetectedAt = e.DetectedAt,
         IsFolder = e.IsFolder,
         RiskLevel = e.RiskLevel,
-        Permissions = JsonSerializer.Deserialize<List<SharePermission>>(e.PermissionsJson) ?? []
+        Permissions = JsonSerializer.Deserialize<List<SharePermission>>(e.PermissionsJson) ?? [],
+        Latest = e.Latest
     };
 }
 

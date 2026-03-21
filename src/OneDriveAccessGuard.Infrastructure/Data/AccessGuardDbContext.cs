@@ -59,6 +59,7 @@ public class SharedItemEntity
     public bool IsFolder { get; set; }
     public RiskLevel RiskLevel { get; set; }
     public string PermissionsJson { get; set; } = "[]"; // JSON serialized
+    public int? Latest { get; set; }
 }
 
 public class ScanSessionEntity
