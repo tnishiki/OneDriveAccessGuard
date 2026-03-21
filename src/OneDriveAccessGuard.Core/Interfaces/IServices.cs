@@ -30,7 +30,7 @@ public interface IGraphService
     Task<IEnumerable<OrgUser>> GetAllUsersAsync(bool excludeGuests = false, string? accountFilter = null, CancellationToken ct = default);
 
     /// <summary>指定ユーザーのOneDrive上の共有アイテムを取得する</summary>
-    Task<IEnumerable<SharedItem>> GetSharedItemsAsync(string userId, IProgress<ScanProgress>? progress = null, CancellationToken ct = default);
+    Task<IEnumerable<SharedItem>> GetSharedItemsAsync(string userId, string DisplayName, IProgress<ScanProgress>? progress = null, CancellationToken ct = default);
 
     /// <summary>指定ファイルの共有アクセス許可を削除する（非公開化）</summary>
     Task<bool> RemovePermissionAsync(string userId, string itemId, string permissionId, CancellationToken ct = default);
@@ -40,6 +40,9 @@ public interface IGraphService
 
     /// <summary>設定変更後にクライアントを再初期化する</summary>
     void ReinitializeClient();
+
+    /// <summary>ログ出力のコールバック（UI への追記などに使用）</summary>
+    Action<string>? LogCallback { get; set; }
 }
 
 /// <summary>

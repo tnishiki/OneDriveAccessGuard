@@ -20,9 +20,6 @@ public partial class MainViewModel : ObservableObject
     private string _currentPageTitle = "ダッシュボード";
 
     [ObservableProperty]
-    private string _lastScanTimeText = "最終スキャン: 未実行";
-
-    [ObservableProperty]
     private ObservableObject? _currentPage;
 
     [ObservableProperty]
@@ -74,12 +71,6 @@ public partial class MainViewModel : ObservableObject
         };
     }
 
-    [RelayCommand]
-    private async Task StartScanAsync()
-    {
-        SelectedNavItem = NavigationItems.First(n => n.Key == "scan");
-        await _scanVm.StartScanCommand.ExecuteAsync(null);
-    }
 }
 
 /// <summary>ナビゲーション項目</summary>

@@ -18,7 +18,17 @@ public partial class SharedItemsViewModel : ObservableObject
     [ObservableProperty] private SharedItem? _selectedItem;
     [ObservableProperty] private string _filterText = string.Empty;
     [ObservableProperty] private RiskLevel _filterRiskLevel = RiskLevel.Low;
-    [ObservableProperty] private bool _isLoading;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RevokePermissionsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RevokeAllHighRiskCommand))]
+    private bool _isLoading;
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(RevokePermissionsCommand))]
+    [NotifyCanExecuteChangedFor(nameof(RevokeAllHighRiskCommand))]
+    private bool _isScanRunning;
+
     [ObservableProperty] private string _statusMessage = string.Empty;
 
     public SharedItemsViewModel(
@@ -61,8 +71,10 @@ public partial class SharedItemsViewModel : ObservableObject
         DisplayItems = new ObservableCollection<SharedItem>(filtered);
     }
 
+    private bool CanRevoke() => !IsLoading && !IsScanRunning;
+
     /// <summary>選択したアイテムの全共有を無効化する</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRevoke))]
     private async Task RevokePermissionsAsync(SharedItem? item)
     {
         if (item == null) return;
@@ -101,7 +113,7 @@ public partial class SharedItemsViewModel : ObservableObject
     }
 
     /// <summary>高リスクアイテムを一括無効化する</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanRevoke))]
     private async Task RevokeAllHighRiskAsync()
     {
         var highRisk = _allItems.Where(x => x.RiskLevel == RiskLevel.High).ToList();

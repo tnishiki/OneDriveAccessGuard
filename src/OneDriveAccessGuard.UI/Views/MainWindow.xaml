@@ -140,23 +140,6 @@
                                FontSize="18" FontWeight="Medium"
                                VerticalAlignment="Center"/>
 
-                    <!-- スキャン実行ボタン -->
-                    <Button DockPanel.Dock="Right"
-                            Command="{Binding StartScanCommand}"
-                            Style="{StaticResource MaterialDesignRaisedButton}"
-                            Background="#1565C0" Foreground="White"
-                            Padding="16,8" Margin="8,0,0,0">
-                        <StackPanel Orientation="Horizontal">
-                            <materialDesign:PackIcon Kind="Magnify" Width="16" Height="16"/>
-                            <TextBlock Text="スキャン実行" Margin="6,0,0,0"/>
-                        </StackPanel>
-                    </Button>
-
-                    <!-- 最終スキャン日時 -->
-                    <TextBlock DockPanel.Dock="Right"
-                               Text="{Binding LastScanTimeText}"
-                               FontSize="12" Foreground="#757575"
-                               VerticalAlignment="Center"/>
                 </DockPanel>
             </Border>
 

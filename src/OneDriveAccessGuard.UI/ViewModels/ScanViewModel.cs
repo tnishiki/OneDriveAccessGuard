@@ -11,6 +11,7 @@ public partial class ScanViewModel : ObservableObject
 {
     private readonly IGraphService _graphService;
     private readonly ISharedItemRepository _repository;
+    private readonly SharedItemsViewModel _sharedItemsVm;
     private CancellationTokenSource? _cts;
 
     [ObservableProperty] private ScanStatus _scanStatus = ScanStatus.Idle;
@@ -19,14 +20,17 @@ public partial class ScanViewModel : ObservableObject
     [ObservableProperty] private int _foundItemsCount;
     [ObservableProperty] private bool _canCancel;
     [ObservableProperty] private bool _excludeGuests = true;
+    [ObservableProperty] private string _scanLog = string.Empty;
+    [ObservableProperty] private bool _showLatestLog;
     [ObservableProperty] private string _accountFilter = string.Empty;
 
     public ObservableCollection<SharedItem> ScannedItems { get; } = new();
 
-    public ScanViewModel(IGraphService graphService, ISharedItemRepository repository)
+    public ScanViewModel(IGraphService graphService, ISharedItemRepository repository, SharedItemsViewModel sharedItemsVm)
     {
         _graphService = graphService;
         _repository = repository;
+        _sharedItemsVm = sharedItemsVm;
     }
 
     [RelayCommand]
@@ -37,11 +41,14 @@ public partial class ScanViewModel : ObservableObject
         _cts = new CancellationTokenSource();
         ScanStatus = ScanStatus.Running;
         CanCancel = true;
+        _sharedItemsVm.IsScanRunning = true;
         FoundItemsCount = 0;
+        ScanLog = string.Empty;
         ScannedItems.Clear();
 
+        _graphService.LogCallback = msg => ScanLog += msg + Environment.NewLine;
         var uiContext = SynchronizationContext.Current!;
-
+        
         var progress = new Progress<ScanProgress>(p =>
         {
             ProgressPercent = p.ProgressPercent;
@@ -49,6 +56,7 @@ public partial class ScanViewModel : ObservableObject
             FoundItemsCount = p.FoundItemsCount;
         });
 
+        var allItems = new List<SharedItem>();
         try
         {
             var accountFilter = string.IsNullOrWhiteSpace(AccountFilter) ? null : AccountFilter.Trim();
@@ -97,6 +105,7 @@ public partial class ScanViewModel : ObservableObject
             allItems.AddRange(allItemsBag);
 
             await _repository.UpsertAsync(allItems);
+            await _sharedItemsVm.LoadAsync();
             ScanStatus = ScanStatus.Completed;
             ProgressMessage = $"スキャン完了: {allItems.Count} 件の共有アイテムを検出";
         }
@@ -104,6 +113,11 @@ public partial class ScanViewModel : ObservableObject
         {
             ScanStatus = ScanStatus.Cancelled;
             ProgressMessage = "スキャンがキャンセルされました";
+            if (allItems.Count > 0)
+            {
+                await _repository.UpsertAsync(allItems);
+                await _sharedItemsVm.LoadAsync();
+            }
         }
         catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException))
         {
@@ -118,6 +132,7 @@ public partial class ScanViewModel : ObservableObject
         finally
         {
             CanCancel = false;
+            _sharedItemsVm.IsScanRunning = false;
         }
     }
 

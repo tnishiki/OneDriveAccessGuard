@@ -2,11 +2,11 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes">
-
-    <Grid Margin="24">
+    <Grid Margin="24" Background="white">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="120"/>
         </Grid.RowDefinitions>
 
         <!-- 上部コントロールエリア -->
@@ -110,8 +110,13 @@
                                     Width="100"/>
 
             </DataGrid.Columns>
-
         </DataGrid>
-
+        <Grid Grid.Row="2">
+            <CheckBox Content="最新を表示"
+                      IsChecked="{Binding ShowLatestLog}"
+                      VerticalAlignment="Top"
+                      Margin="0,0,0,8" FontSize="14"/>
+            <TextBox x:Name="LogTextBox" Margin="2,30,2,2" AcceptsReturn="True" Text="{Binding ScanLog}" VerticalScrollBarVisibility="Visible"/>
+        </Grid>
     </Grid>
 </UserControl>
