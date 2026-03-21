@@ -105,6 +105,51 @@ public class SharedItemRepository : ISharedItemRepository
     };
 }
 
+public class UserScanResultRepository : IUserScanResultRepository
+{
+    private readonly AccessGuardDbContext _db;
+
+    public UserScanResultRepository(AccessGuardDbContext db) => _db = db;
+
+    public async Task UpsertAsync(string userId, int riskFiles, int allFiles, DateTime lastCheckDate)
+    {
+        var existing = await _db.UserScanResults.FindAsync(userId);
+        if (existing == null)
+        {
+            _db.UserScanResults.Add(new UserScanResultEntity
+            {
+                UserId = userId,
+                RiskFiles = riskFiles,
+                AllFiles = allFiles,
+                LastCheckDate = lastCheckDate
+            });
+        }
+        else
+        {
+            existing.RiskFiles = riskFiles;
+            existing.AllFiles = allFiles;
+            existing.LastCheckDate = lastCheckDate;
+        }
+        await _db.SaveChangesAsync();
+    }
+
+    public async Task<IEnumerable<(string UserId, int RiskFiles, int AllFiles, DateTime LastCheckDate)>> GetAllAsync()
+    {
+        var entities = await _db.UserScanResults.ToListAsync();
+        return entities.Select(e => (e.UserId, e.RiskFiles, e.AllFiles, e.LastCheckDate));
+    }
+
+    public async Task<IEnumerable<DateTime>> GetRecentScanDatesAsync(int count = 10)
+    {
+        var entities = await _db.UserScanResults.ToListAsync();
+        return entities
+            .Select(e => e.LastCheckDate.Date)
+            .Distinct()
+            .OrderByDescending(d => d)
+            .Take(count);
+    }
+}
+
 public class AuditLogRepository : IAuditLogRepository
 {
     private readonly AccessGuardDbContext _db;

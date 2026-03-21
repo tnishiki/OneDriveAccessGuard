@@ -8,74 +8,74 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto">
             <StackPanel Margin="24">
 
+                <TextBlock Text="ダッシュボード" FontSize="20" FontWeight="Medium" Margin="0,0,0,24"/>
+
                 <!-- 統計カード -->
                 <WrapPanel Margin="0,0,0,24">
 
-                    <!-- 高リスク -->
-                    <Border Width="180" Height="100" Margin="0,0,16,16" CornerRadius="8"
-                            Background="#FFEBEE">
-                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="{Binding HighRiskCount}" FontSize="36" FontWeight="Bold"
-                                       Foreground="#C62828" HorizontalAlignment="Center"/>
-                            <TextBlock Text="高リスク" FontSize="13" Foreground="#B71C1C"
-                                       HorizontalAlignment="Center"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- 中リスク -->
-                    <Border Width="180" Height="100" Margin="0,0,16,16" CornerRadius="8"
-                            Background="#FFF3E0">
-                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="{Binding MediumRiskCount}" FontSize="36" FontWeight="Bold"
-                                       Foreground="#E65100" HorizontalAlignment="Center"/>
-                            <TextBlock Text="中リスク" FontSize="13" Foreground="#BF360C"
-                                       HorizontalAlignment="Center"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- 低リスク -->
-                    <Border Width="180" Height="100" Margin="0,0,16,16" CornerRadius="8"
-                            Background="#FFF8E1">
-                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="{Binding LowRiskCount}" FontSize="36" FontWeight="Bold"
-                                       Foreground="#F57F17" HorizontalAlignment="Center"/>
-                            <TextBlock Text="低リスク" FontSize="13" Foreground="#F57F17"
-                                       HorizontalAlignment="Center"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- 合計 -->
+                    <!-- 全共有ファイル数 -->
                     <Border Width="180" Height="100" Margin="0,0,16,16" CornerRadius="8"
                             Background="#E3F2FD">
                         <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
-                            <TextBlock Text="{Binding TotalItemsCount}" FontSize="36" FontWeight="Bold"
+                            <TextBlock Text="{Binding TotalSharedFilesCount}" FontSize="36" FontWeight="Bold"
                                        Foreground="#1565C0" HorizontalAlignment="Center"/>
-                            <TextBlock Text="合計共有アイテム" FontSize="13" Foreground="#1565C0"
+                            <TextBlock Text="全共有ファイル数" FontSize="13" Foreground="#1565C0"
                                        HorizontalAlignment="Center"/>
                         </StackPanel>
                     </Border>
+
+                    <!-- ユニーク教職員数 -->
+                    <Border Width="180" Height="100" Margin="0,0,16,16" CornerRadius="8"
+                            Background="#E8F5E9">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <TextBlock Text="{Binding UniqueOwnersCount}" FontSize="36" FontWeight="Bold"
+                                       Foreground="#2E7D32" HorizontalAlignment="Center"/>
+                            <TextBlock Text="公開中の教職員数" FontSize="13" Foreground="#2E7D32"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
                 </WrapPanel>
 
-                <!-- 高リスクアイテム一覧 -->
-                <TextBlock Text="高リスク共有アイテム（最新10件）"
-                           FontSize="16" FontWeight="Medium" Margin="0,0,0,12"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="200"/>
+                        <ColumnDefinition Width="32"/>
+                        <ColumnDefinition/>
+                    </Grid.ColumnDefinitions>
 
-                <DataGrid ItemsSource="{Binding RecentHighRiskItems}"
-                          AutoGenerateColumns="False" IsReadOnly="True"
-                          CanUserAddRows="False" CanUserDeleteRows="False"
-                          GridLinesVisibility="Horizontal"
-                          HeadersVisibility="Column"
-                          BorderThickness="1" BorderBrush="#E0E0E0">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="ファイル名" Binding="{Binding Name}" Width="*"/>
-                        <DataGridTextColumn Header="所有者" Binding="{Binding OwnerDisplayName}" Width="160"/>
-                        <DataGridTextColumn Header="サイズ (KB)" Width="100"
-                                            Binding="{Binding SizeBytes, StringFormat={}{0:N0}}"/>
-                        <DataGridTextColumn Header="最終更新" Width="140"
-                                            Binding="{Binding LastModified, StringFormat={}{0:yyyy/MM/dd HH:mm}}"/>
-                        <DataGridHyperlinkColumn Header="URL" Binding="{Binding WebUrl}" Width="80"/>
-                    </DataGrid.Columns>
-                </DataGrid>
+                    <!-- 直近10回のスキャン日 -->
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="直近のスキャン日（最大10回）"
+                                   FontSize="16" FontWeight="Medium" Margin="0,0,0,12"/>
+                        <ItemsControl ItemsSource="{Binding RecentScanDates}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" FontSize="14" Margin="0,0,0,6"
+                                               Foreground="#424242"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- 拡張子別ファイル数 -->
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="拡張子別ファイル数"
+                                   FontSize="16" FontWeight="Medium" Margin="0,0,0,12"/>
+                        <DataGrid ItemsSource="{Binding ExtensionCounts}"
+                                  AutoGenerateColumns="False" IsReadOnly="True"
+                                  CanUserAddRows="False"
+                                  GridLinesVisibility="Horizontal"
+                                  HeadersVisibility="Column"
+                                  BorderThickness="1" BorderBrush="#E0E0E0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="拡張子" Binding="{Binding Extension}" Width="*"/>
+                                <DataGridTextColumn Header="ファイル数" Binding="{Binding Count}" Width="100"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </StackPanel>
+
+                </Grid>
 
             </StackPanel>
         </ScrollViewer>
